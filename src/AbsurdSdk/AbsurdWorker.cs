@@ -1,0 +1,97 @@
+﻿using System.Collections.Concurrent;
+
+namespace AbsurdSdk
+{
+    /// <summary>
+    /// A standalone worker that polls for tasks and executes them using the provided Absurd Client.
+    /// </summary>
+    public class AbsurdWorker
+    {
+        private readonly IAbsurd _client;
+        private readonly WorkerOptions _options;
+
+        public AbsurdWorker(WorkerOptions options, IAbsurd client)
+        {
+            _client = client;
+            _options = options;
+        }
+
+        /// <summary>
+        /// Starts the polling loop. This method returns a Task that runs until cancellation is requested.
+        /// </summary>
+        public async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            var semaphore = new SemaphoreSlim(_options.Concurrency);
+            var executing = new ConcurrentDictionary<Task, bool>();
+            var batchSize = _options.BatchSize ?? _options.Concurrency;
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    if (semaphore.CurrentCount == 0)
+                    {
+                        await Task.Delay((int)(_options.PollInterval * 1000), stoppingToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    int toClaim = Math.Min(batchSize, semaphore.CurrentCount);
+                    if (toClaim <= 0)
+                    {
+                        await Task.Delay((int)(_options.PollInterval * 1000), stoppingToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    // 2. Claim Tasks
+                    var messages = await _client.ClaimTasks(_options.Queue, _options.WorkerId, _options.ClaimTimeout, toClaim).ConfigureAwait(false);
+                    var msgList = new List<ClaimedTask>(messages);
+
+                    if (msgList.Count == 0)
+                    {
+                        await Task.Delay((int)(_options.PollInterval * 1000), stoppingToken).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    // 3. Dispatch Tasks
+                    foreach (var task in msgList)
+                    {
+                        await semaphore.WaitAsync(stoppingToken).ConfigureAwait(false);
+
+                        // Fire and forget (tracked by dictionary)
+                        Task taskExecution = ExecuteTaskWrapper(task, semaphore);
+
+                        executing.TryAdd(taskExecution, true);
+
+                        _ = taskExecution
+                            .ContinueWith(t => executing.TryRemove(t, out _));
+                    }
+                }
+                catch (OperationCanceledException) { break; }
+                catch (Exception ex)
+                {
+                    _options.OnError?.Invoke(ex);
+
+                    await Task.Delay((int)(_options.PollInterval * 1000), stoppingToken).ConfigureAwait(false);
+                }
+            }
+
+            await Task.WhenAll(executing.Keys).ConfigureAwait(false);
+        }
+
+        private async Task ExecuteTaskWrapper(ClaimedTask task, SemaphoreSlim semaphore)
+        {
+            try
+            {
+                await _client.ExecuteTask(task, _options.Queue, _options.ClaimTimeout, _options.FatalOnLeaseTimeout).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _options.OnError?.Invoke(ex);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+    }
+}

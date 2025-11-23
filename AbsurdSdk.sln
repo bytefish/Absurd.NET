@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36518.9
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AbsurdSdk", "src\AbsurdSdk\AbsurdSdk.csproj", "{8EF64AD3-3A59-C252-BE10-F3884E6C01AE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AbsurdSdk.Sample", "src\AbsurdSdk.Tests\AbsurdSdk.Sample.csproj", "{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8EF64AD3-3A59-C252-BE10-F3884E6C01AE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8EF64AD3-3A59-C252-BE10-F3884E6C01AE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8EF64AD3-3A59-C252-BE10-F3884E6C01AE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8EF64AD3-3A59-C252-BE10-F3884E6C01AE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E60B5807-394B-43B6-9AE0-62599EF37142}
+	EndGlobalSection
+EndGlobal
