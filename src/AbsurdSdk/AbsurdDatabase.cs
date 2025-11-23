@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace AbsurdSdk;
 
 /// <summary>
-/// Encapsulates all raw database interactions using raw ADO.NET (Npgsql).
+/// Encapsulates all raw database interactions.
 /// </summary>
 public class AbsurdDatabase
 {

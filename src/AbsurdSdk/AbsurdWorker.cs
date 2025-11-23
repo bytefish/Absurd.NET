@@ -42,8 +42,8 @@ namespace AbsurdSdk
                         continue;
                     }
 
-                    // 2. Claim Tasks
                     var messages = await _client.ClaimTasks(_options.Queue, _options.WorkerId, _options.ClaimTimeout, toClaim).ConfigureAwait(false);
+
                     var msgList = new List<ClaimedTask>(messages);
 
                     if (msgList.Count == 0)
@@ -52,7 +52,6 @@ namespace AbsurdSdk
                         continue;
                     }
 
-                    // 3. Dispatch Tasks
                     foreach (var task in msgList)
                     {
                         await semaphore.WaitAsync(stoppingToken).ConfigureAwait(false);

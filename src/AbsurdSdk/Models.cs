@@ -4,15 +4,6 @@ using System.Text.Json.Serialization;
 
 namespace AbsurdSdk;
 
-// --- Configuration Hierarchy Models ---
-
-// 1. Client Level (Global Defaults)
-public class AbsurdClientOptions
-{
-    public required string ConnectionString { get; set; }
-}
-
-// 2. Task Definition Level (Type Defaults)
 public class TaskRegistrationOptions
 {
     public required string Name { get; set; }
@@ -23,8 +14,6 @@ public class TaskRegistrationOptions
 
     public CancellationPolicy? DefaultCancellation { get; set; }
 }
-
-// 3. Invocation Level (Instance Overrides)
 
 public class SpawnOptions
 {

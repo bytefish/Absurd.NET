@@ -24,18 +24,18 @@ public class TaskContext
 {
     private readonly AbsurdDatabase _db = new AbsurdDatabase();
     private readonly Dictionary<string, int> _stepNameCounter = new();
-    private readonly ILogger _log;
+    private readonly ILogger _logger;
 
     public string TaskId { get; }
 
-    private readonly NpgsqlConnection _con; // Represents the connection used for this run
+    private readonly NpgsqlConnection _connection;
     private readonly string _queueName;
     private readonly ClaimedTask _task;
     private readonly Dictionary<string, JsonNode?> _checkpointCache;
     private readonly int _claimTimeout;
 
     private TaskContext(
-        ILogger log,
+        ILogger logger,
         string taskId,
         NpgsqlConnection con,
         string queueName,
@@ -43,9 +43,9 @@ public class TaskContext
         Dictionary<string, JsonNode?> checkpointCache,
         int claimTimeout)
     {
-        _log = log;
+        _logger = logger;
         TaskId = taskId;
-        _con = con;
+        _connection = con;
         _queueName = queueName;
         _task = task;
         _checkpointCache = checkpointCache;
@@ -91,7 +91,7 @@ public class TaskContext
 
         string rvString = rvJson?.ToJsonString() ?? "null";
 
-        await _db.PersistCheckpoint(_con, _queueName, _task.TaskId, _task.RunId, checkpointName, rvString, _claimTimeout).ConfigureAwait(false);
+        await _db.PersistCheckpoint(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, rvString, _claimTimeout).ConfigureAwait(false);
 
         _checkpointCache[checkpointName] = rvJson;
         return rv;
@@ -117,13 +117,13 @@ public class TaskContext
         {
             // Persist the wake time as the state
             string wakeString = JsonSerializer.Serialize(wakeAt);
-            await _db.PersistCheckpoint(_con, _queueName, _task.TaskId, _task.RunId, checkpointName, wakeString, _claimTimeout).ConfigureAwait(false);
+            await _db.PersistCheckpoint(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, wakeString, _claimTimeout).ConfigureAwait(false);
             _checkpointCache[checkpointName] = JsonValue.Create(wakeAt);
         }
 
         if (DateTime.UtcNow < actualWakeAt)
         {
-            await _db.ScheduleRun(_con, _queueName, _task.RunId, actualWakeAt).ConfigureAwait(false);
+            await _db.ScheduleRun(_connection, _queueName, _task.RunId, actualWakeAt).ConfigureAwait(false);
 
             throw new SuspendTaskException();
         }
@@ -148,7 +148,7 @@ public class TaskContext
             return cached;
         }
 
-        JsonNode? state = await _db.GetSingleCheckpoint(_con, _queueName, _task.TaskId, checkpointName).ConfigureAwait(false);
+        JsonNode? state = await _db.GetSingleCheckpoint(_connection, _queueName, _task.TaskId, checkpointName).ConfigureAwait(false);
 
         if (state != null)
         {
@@ -178,7 +178,7 @@ public class TaskContext
             throw new TimeoutErrorException($"Timed out waiting for event \"{eventName}\"");
         }
 
-        (bool ShouldSuspend, JsonNode Payload) result = await _db.AwaitEvent(_con, _queueName, _task.TaskId, _task.RunId, checkpointName, eventName, timeout).ConfigureAwait(false);
+        (bool ShouldSuspend, JsonNode Payload) result = await _db.AwaitEvent(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, eventName, timeout).ConfigureAwait(false);
 
         if (!result.ShouldSuspend)
         {
@@ -192,7 +192,7 @@ public class TaskContext
 
     public async Task Heartbeat(int? seconds = null)
     {
-        await _db.Heartbeat(_con, _queueName, _task.RunId, seconds ?? _claimTimeout).ConfigureAwait(false);
+        await _db.Heartbeat(_connection, _queueName, _task.RunId, seconds ?? _claimTimeout).ConfigureAwait(false);
     }
 
     public async Task EmitEvent(string eventName, JsonNode? payload = null)
@@ -202,6 +202,6 @@ public class TaskContext
             throw new ArgumentException("eventName must be a non-empty string");
         }
 
-        await _db.EmitEvent(_con, _queueName, eventName, payload?.ToJsonString() ?? "null").ConfigureAwait(false);
+        await _db.EmitEvent(_connection, _queueName, eventName, payload?.ToJsonString() ?? "null").ConfigureAwait(false);
     }
 }
