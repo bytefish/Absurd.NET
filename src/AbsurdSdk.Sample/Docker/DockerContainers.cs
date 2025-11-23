@@ -5,7 +5,7 @@ using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Networks;
 using Testcontainers.PostgreSql;
 
-namespace AbsurdSdk.Sample
+namespace AbsurdSdk.Sample.Docker
 {
     public class DockerContainers
     {

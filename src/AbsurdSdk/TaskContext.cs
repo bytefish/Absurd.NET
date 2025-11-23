@@ -93,6 +93,7 @@ public class TaskContext
         await _db.PersistCheckpoint(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, rvString, _claimTimeout).ConfigureAwait(false);
 
         _checkpointCache[checkpointName] = rvJson;
+
         return rv;
     }
 
