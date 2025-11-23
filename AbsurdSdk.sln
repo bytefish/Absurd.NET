@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AbsurdSdk", "src\AbsurdSdk\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AbsurdSdk.Tests", "src\AbsurdSdk.Tests\AbsurdSdk.Tests.csproj", "{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AbsurdSdk.Sample", "src\AbsurdSdk.Sample\AbsurdSdk.Sample.csproj", "{A4D15FE6-F7D6-42FE-AE42-49389DB82A87}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8CCC4D5B-5D0C-8249-C81D-732E63CE2444}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A4D15FE6-F7D6-42FE-AE42-49389DB82A87}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4D15FE6-F7D6-42FE-AE42-49389DB82A87}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4D15FE6-F7D6-42FE-AE42-49389DB82A87}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4D15FE6-F7D6-42FE-AE42-49389DB82A87}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

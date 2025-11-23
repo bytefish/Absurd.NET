@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AbsurdSdk\AbsurdSdk.csproj" />
+  </ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Testcontainers" Version="4.9.0" />
+		<PackageReference Include="Testcontainers.PostgreSql" Version="4.9.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Resources\docker\" />
+	  <Folder Include="Resources\sql\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="..\..\sql\absurd.sql" Link="Resources\sql\absurd.sql">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="..\..\docker\postgres\postgres.conf" Link="Resources\docker\postgres.conf">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
+</Project>
