@@ -1,4 +1,5 @@
-﻿using System;
+﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -8,8 +9,7 @@ public class TaskRegistrationOptions
 {
     public required string Name { get; set; }
 
-    public required string Queue { get; set; } // Defaults to "default" if not specified
-
+    public required string Queue { get; set; }
     public int DefaultMaxAttempts { get; set; } = 5;
 
     public CancellationPolicy? DefaultCancellation { get; set; }

@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Logging;
+﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using System.Text.Json;
 
@@ -21,7 +23,10 @@ namespace AbsurdSdk
 
         public void RegisterTask(TaskRegistrationOptions options, TaskHandler handler)
         {
-            if (string.IsNullOrEmpty(options.Name)) throw new ArgumentException("Task registration requires a name");
+            if (string.IsNullOrEmpty(options.Name))
+            {
+                throw new ArgumentException("Task registration requires a name");
+            }
 
             _registry[options.Name] = new RegisteredTask
             {
@@ -81,6 +86,7 @@ namespace AbsurdSdk
             }
 
             await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
+
             return await _db.SpawnTask(
                 conn,
                 options.Queue,

@@ -1,4 +1,6 @@
-﻿using Npgsql;
+﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+using Npgsql;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -242,6 +244,7 @@ public class AbsurdDatabase
             AddParam(cmd, "timeout", timeout);
 
             using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
+            
             if (await reader.ReadAsync().ConfigureAwait(false))
             {
                 return (
@@ -249,6 +252,7 @@ public class AbsurdDatabase
                     ParseJson(reader, 1)
                 );
             }
+
             throw new Exception("Failed to await event");
         });
     }

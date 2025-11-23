@@ -26,6 +26,7 @@
     <PackageReference Include="MSTest.TestAdapter" Version="4.0.2" />
     <PackageReference Include="MSTest.TestFramework" Version="4.0.2" />
     <PackageReference Include="Testcontainers" Version="4.9.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.9.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -47,6 +48,10 @@
     <Content Include="..\..\docker\postgres\postgres.conf" Link="Resources\docker\postgres.conf">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AbsurdSdk\AbsurdSdk.csproj" />
   </ItemGroup>
 
 </Project>

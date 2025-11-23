@@ -1,8 +1,7 @@
-﻿using Microsoft.Extensions.Logging;
+﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+using Microsoft.Extensions.Logging;
 using Npgsql;
-using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 

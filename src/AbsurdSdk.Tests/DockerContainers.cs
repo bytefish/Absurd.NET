@@ -2,10 +2,10 @@
 
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
-using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
+using Testcontainers.PostgreSql;
 
-namespace GitClub.Tests
+namespace AbsurdSdk.Tests
 {
     public class DockerContainers
     {
@@ -14,9 +14,9 @@ namespace GitClub.Tests
                 .WithDriver(NetworkDriver.Bridge)
                 .Build();
 
-        public static IContainer PostgresContainer = new ContainerBuilder()
+        public static PostgreSqlContainer PostgresContainer = new PostgreSqlBuilder()
             .WithName("postgres")
-            .WithImage("postgres:16")
+            .WithImage("postgres:18")
             .WithNetwork(ServicesNetwork)
             .WithPortBinding(hostPort: 5432, containerPort: 5432)
             // Mount Postgres Configuration and SQL Scripts 
