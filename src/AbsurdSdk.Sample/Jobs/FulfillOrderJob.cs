@@ -39,7 +39,10 @@ namespace AbsurdSdk.Sample.Jobs
                 return await _paymentService.ChargeAsync(order.OrderId, order.Amount);
             });
 
-            if (!payment!.Success) throw new Exception($"Payment failed: {payment.ErrorMessage}");
+            if (!payment.Success)
+            {
+                throw new Exception($"Payment failed: {payment.ErrorMessage}");
+            }
 
             // Wait for Warehouse
             _logger.LogInformation("Waiting for pick signal...");

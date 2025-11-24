@@ -4,8 +4,11 @@ namespace AbsurdSdk.Sample.Models;
 
 public class OrderData
 {
-    public string OrderId { get; set; } = string.Empty;
+    public required string OrderId { get; set; }
+
     public string CustomerEmail { get; set; } = string.Empty;
+
     public decimal Amount { get; set; }
+
     public List<string> Items { get; set; } = new();
 }

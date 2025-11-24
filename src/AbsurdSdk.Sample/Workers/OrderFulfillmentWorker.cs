@@ -1,5 +1,4 @@
-﻿
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using AbsurdSdk.Sample.Jobs;
 using AbsurdSdk.Sample.Models;
@@ -38,7 +37,7 @@ public class SampleOrderWorker : BackgroundService
             OnError = ex => Console.WriteLine($"[WORKER ERROR] {ex.Message}")
         }, _client);
 
-        // 3. Start the worker loop
+        // Start the worker loop
         await _absurdWorker.ExecuteAsync(stoppingToken);
     }
 }

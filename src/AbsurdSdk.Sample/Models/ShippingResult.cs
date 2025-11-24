@@ -4,6 +4,7 @@ namespace AbsurdSdk.Sample.Models;
 
 public class ShippingResult
 {
-    public string TrackingNumber { get; set; } = string.Empty;
-    public DateTime EstimatedDelivery { get; set; }
+    public required string TrackingNumber { get; set; }
+
+    public required DateTime EstimatedDelivery { get; set; }
 }

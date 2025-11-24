@@ -24,7 +24,6 @@ public class AbsurdIntegrationTests
         ConnectionString = DockerContainers.PostgresContainer.GetConnectionString();
     }
 
-
     [TestMethod]
     public async Task Test_BasicTaskExecution_Flow()
     {
