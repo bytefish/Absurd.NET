@@ -7,7 +7,7 @@ using Testcontainers.PostgreSql;
 
 namespace AbsurdSdk.Tests
 {
-    public class DockerContainers
+    public static class DockerContainers
     {
         public static INetwork ServicesNetwork = new NetworkBuilder()
                 .WithName("services")
