@@ -73,17 +73,18 @@ public class TaskContext
         return new TaskContext(logger, taskId, con, queueName, task, cache, claimTimeout);
     }
 
-    public async Task<T?> Step<T>(string name, Func<Task<T>> fn)
+    public async Task<T> Step<T>(string name, Func<Task<T>> fn)
     {
         string checkpointName = GetCheckpointName(name);
+
         JsonNode? state = await LookupCheckpoint(checkpointName).ConfigureAwait(false);
 
         if (state != null)
         {
-            return state.Deserialize<T>();
+            return state.Deserialize<T>()!;
         }
 
-        T? rv = await fn().ConfigureAwait(false);
+        T rv = await fn().ConfigureAwait(false);
 
         // Serialize result to string for DB
         JsonNode? rvJson = JsonSerializer.SerializeToNode(rv);

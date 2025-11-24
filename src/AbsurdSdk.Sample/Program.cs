@@ -2,6 +2,7 @@
 
 using AbsurdSdk;
 using AbsurdSdk.Sample.Docker;
+using AbsurdSdk.Sample.Jobs;
 using AbsurdSdk.Sample.Models;
 using AbsurdSdk.Sample.Services;
 using AbsurdSdk.Sample.Workers;
@@ -30,8 +31,11 @@ builder.Services.AddSingleton<IAbsurd>(sp =>
     return new Absurd(logger, dataSource);
 });
 
+// Register Jobs
+builder.Services.RegisterJob<FulfillOrderJob, OrderData, FulfillOrderResult>();
+
 // Register the Worker as a Hosted Service
-builder.Services.AddHostedService<OrderFulfillmentWorker>();
+builder.Services.AddHostedService<SampleOrderWorker>();
 
 var app = builder.Build();
 

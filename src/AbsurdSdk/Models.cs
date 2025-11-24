@@ -5,11 +5,19 @@ using System.Text.Json.Serialization;
 
 namespace AbsurdSdk;
 
+public interface IJob<TParams, TResult>
+{
+    static abstract TaskRegistrationOptions Options { get; }
+
+    Task<TResult> ExecuteAsync(TaskContext ctx, TParams args);
+}
+
 public class TaskRegistrationOptions
 {
     public required string Name { get; set; }
 
     public required string Queue { get; set; }
+
     public int DefaultMaxAttempts { get; set; } = 5;
 
     public CancellationPolicy? DefaultCancellation { get; set; }
