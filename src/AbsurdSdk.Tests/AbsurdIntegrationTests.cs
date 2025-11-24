@@ -29,11 +29,12 @@ public class AbsurdIntegrationTests
     public async Task Test_BasicTaskExecution_Flow()
     {
         // ARRANGE
-        var dataSource = NpgsqlDataSource.Create(ConnectionString);
+        NpgsqlDataSource dataSource = NpgsqlDataSource.Create(ConnectionString);
 
-        // Use NullLogger for tests to keep output clean
-        var client = new Absurd(NullLogger<Absurd>.Instance, dataSource);
+        // Build the Absurd Client
+        IAbsurd client = new Absurd(NullLogger<Absurd>.Instance, dataSource);
 
+        // Ensure the test queue exists
         await client.CreateQueue("test-queue");
 
         // We use a TCS to signal when the background worker has actually finished the task
@@ -63,10 +64,9 @@ public class AbsurdIntegrationTests
         });
 
         // ACT
-
         await client.Spawn(new SpawnOptions { Queue = "test-queue" }, "add-numbers", new { a = 10, b = 20 });
 
-        var worker = new AbsurdWorker(new WorkerOptions
+        AbsurdWorker worker = new AbsurdWorker(new WorkerOptions
         {
             Queue = "test-queue",
             PollInterval = 0.1, // Fast polling for tests
@@ -74,13 +74,13 @@ public class AbsurdIntegrationTests
             WorkerId = "test-worker"
         }, client);
 
-        using var cts = new CancellationTokenSource();
+        using CancellationTokenSource cts = new CancellationTokenSource();
 
         // Run worker in background
-        var workerTask = worker.ExecuteAsync(cts.Token);
+        Task workerTask = worker.ExecuteAsync(cts.Token);
 
         // Wait for the task to complete (or timeout after 5s)
-        var completedTask = await Task.WhenAny(completionSource.Task, Task.Delay(5000));
+        Task completedTask = await Task.WhenAny(completionSource.Task, Task.Delay(5000));
 
         // Stop worker
         cts.Cancel();
@@ -96,7 +96,7 @@ public class AbsurdIntegrationTests
             Assert.Fail("Task execution timed out.");
         }
 
-        var result = await completionSource.Task;
+        int result = await completionSource.Task;
 
         Assert.AreEqual(30, result, "The worker should have summed 10 + 20 to get 30.");
     }
