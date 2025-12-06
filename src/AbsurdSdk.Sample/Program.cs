@@ -8,11 +8,15 @@ using AbsurdSdk.Sample.Services;
 using AbsurdSdk.Sample.Workers;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using Testcontainers.PostgreSql;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Start Docker Containers for dependencies
 await DockerContainers.StartAllContainersAsync();
+
+// Your custom connection string
+string connectionString = $"Host=127.0.0.1;Port=5432;Database=abdurd_db;Username=postgres;Password=password;";
 
 // Add Logging
 builder.Services.AddLogging();
@@ -26,7 +30,7 @@ builder.Services.AddSingleton<IAbsurd>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<Absurd>>();
 
-    NpgsqlDataSource dataSource = NpgsqlDataSource.Create(DockerContainers.PostgresContainer.GetConnectionString());
+    NpgsqlDataSource dataSource = NpgsqlDataSource.Create(connectionString);
 
     return new Absurd(logger, dataSource);
 });

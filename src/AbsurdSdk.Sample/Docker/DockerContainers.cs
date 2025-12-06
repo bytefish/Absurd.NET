@@ -1,43 +1,33 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using DotNet.Testcontainers;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Networks;
+using System.Xml.Linq;
 using Testcontainers.PostgreSql;
 
 namespace AbsurdSdk.Sample.Docker
 {
     public class DockerContainers
     {
-        public static INetwork ServicesNetwork = new NetworkBuilder()
-                .WithName("services")
-                .WithDriver(NetworkDriver.Bridge)
-                .Build();
-
         public static PostgreSqlContainer PostgresContainer = new PostgreSqlBuilder()
             .WithName("postgres")
             .WithImage("postgres:18")
-            .WithNetwork(ServicesNetwork)
-            .WithPortBinding(hostPort: 5432, containerPort: 5432)
+            .WithEnvironment("POSTGRES_CONFIG_FILE", "/usr/local/etc/postgres/postgres.conf")
+            .WithEnvironment("PGDATA", "/var/lib/postgresql/data/pgdata")
+            .WithEnvironment("POSTGRES_USER", "postgres")
+            .WithEnvironment("POSTGRES_PASSWORD", "password")
+            .WithEnvironment("POSTGRES_DB", "abdurd_db")
             // Mount Postgres Configuration and SQL Scripts 
-            .WithBindMount(Path.Combine(Directory.GetCurrentDirectory(), "Resources/docker/postgres.conf"), "/usr/local/etc/postgres/postgres.conf")
-            .WithBindMount(Path.Combine(Directory.GetCurrentDirectory(), "Resources/sql/absurd.sql"), "/docker-entrypoint-initdb.d/1-absurd.sql")
-            // Set Username and Password
-            .WithEnvironment(new Dictionary<string, string>
-            {
-                    {"POSTGRES_USER", "postgres" },
-                    {"POSTGRES_PASSWORD", "password" },
-            })
-            // Start Postgres with the given postgres.conf.
-            .WithCommand([
-                "postgres",
-                "-c",
-                "config_file=/usr/local/etc/postgres/postgres.conf"
-            ])
+            .WithBindMount(Path.Combine(AppContext.BaseDirectory, "Resources\\docker\\postgres.conf"), "/usr/local/etc/postgres/postgres.conf")
+            .WithBindMount(Path.Combine(AppContext.BaseDirectory, "Resources\\sql\\absurd.sql"), "/docker-entrypoint-initdb.d/1-absurd.sql")
+            // Port Configuration
+            .WithPortBinding(5432, 5432)
             // Wait until the Port is exposed.
-            .WithWaitStrategy(Wait
-                .ForUnixContainer()
-                .UntilExternalTcpPortIsAvailable(5432))
+            .WithWaitStrategy(Wait.ForUnixContainer()
+                .UntilMessageIsLogged("database system is ready to accept connections"))
+            .WithLogger(ConsoleLogger.Instance)
             .Build();
 
         public static async Task StartAllContainersAsync()
@@ -49,5 +39,7 @@ namespace AbsurdSdk.Sample.Docker
         {
             await PostgresContainer.StopAsync();
         }
+
+        
     }
 }
