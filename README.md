@@ -4,8 +4,7 @@ This is a .NET implementation of the Absurd SDK, which has been described at:
 
 * https://github.com/earendil-works/absurd
 
-This is by no means a production-ready SDK. Think of it as a first attempt at a .NET API. Once everything is 
-somewhat stable the API surface is going to change a lot.
+This is by no means a production-ready SDK. Think of it as a first attempt at a .NET API. The API surface is going to change a lot.
 
 ## Usage
 
