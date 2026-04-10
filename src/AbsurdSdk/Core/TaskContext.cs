@@ -1,24 +1,26 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using AbsurdSdk.Database;
+using AbsurdSdk.Exceptions;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace AbsurdSdk;
+namespace AbsurdSdk.Core;
 
 // Delegate for Task Handler
 public delegate Task<object> TaskHandler(TaskContext ctx, JsonNode? parameters);
 
-internal class RegisteredTask
-{
-    public required string Name { get; set; }
-    public required string Queue { get; set; }
-    public int DefaultMaxAttempts { get; set; } = 5;
-    public CancellationPolicy? DefaultCancellation { get; set; }
-    public required TaskHandler Handler { get; set; }
-}
-
+/// <summary>
+/// The TaskContext class provides the context for a task being executed by the Absurd system. It contains all the necessary 
+/// information and methods that a task handler needs to perform its work, including access to checkpoints, event handling, 
+/// and task management functions like sleeping and heartbeating.
+/// 
+/// It is passed as an argument to the TaskHandler when a task is claimed for execution, and it allows the handler to 
+/// interact with the Absurd system in a structured way, ensuring that tasks can be executed reliably and can take advantage 
+/// of features like checkpoints and events to manage complex workflows.
+/// </summary>
 public class TaskContext
 {
     private readonly AbsurdDatabase _db = new AbsurdDatabase();
@@ -61,7 +63,7 @@ public class TaskContext
     {
         AbsurdDatabase db = new AbsurdDatabase();
 
-        IEnumerable<CheckpointRow> checkpoints = await db.GetCheckpointStates(con, queueName, task.TaskId, task.RunId).ConfigureAwait(false);
+        IEnumerable<CheckpointRow> checkpoints = await db.GetCheckpointStatesAsync(con, queueName, task.TaskId, task.RunId).ConfigureAwait(false);
 
         Dictionary<string, JsonNode?> cache = new Dictionary<string, JsonNode?>();
 
@@ -91,7 +93,7 @@ public class TaskContext
 
         string rvString = rvJson?.ToJsonString() ?? "null";
 
-        await _db.PersistCheckpoint(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, rvString, _claimTimeout).ConfigureAwait(false);
+        await _db.PersistCheckpointAsync(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, rvString, _claimTimeout).ConfigureAwait(false);
 
         _checkpointCache[checkpointName] = rvJson;
 
@@ -118,13 +120,13 @@ public class TaskContext
         {
             // Persist the wake time as the state
             string wakeString = JsonSerializer.Serialize(wakeAt);
-            await _db.PersistCheckpoint(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, wakeString, _claimTimeout).ConfigureAwait(false);
+            await _db.PersistCheckpointAsync(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, wakeString, _claimTimeout).ConfigureAwait(false);
             _checkpointCache[checkpointName] = JsonValue.Create(wakeAt);
         }
 
         if (DateTime.UtcNow < actualWakeAt)
         {
-            await _db.ScheduleRun(_connection, _queueName, _task.RunId, actualWakeAt).ConfigureAwait(false);
+            await _db.ScheduleRunAsync(_connection, _queueName, _task.RunId, actualWakeAt).ConfigureAwait(false);
 
             throw new SuspendTaskException();
         }
@@ -149,7 +151,7 @@ public class TaskContext
             return cached;
         }
 
-        JsonNode? state = await _db.GetSingleCheckpoint(_connection, _queueName, _task.TaskId, checkpointName).ConfigureAwait(false);
+        JsonNode? state = await _db.GetSingleCheckpointAsync(_connection, _queueName, _task.TaskId, checkpointName).ConfigureAwait(false);
 
         if (state != null)
         {
@@ -179,7 +181,7 @@ public class TaskContext
             throw new TimeoutErrorException($"Timed out waiting for event \"{eventName}\"");
         }
 
-        (bool ShouldSuspend, JsonNode Payload) result = await _db.AwaitEvent(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, eventName, timeout).ConfigureAwait(false);
+        (bool ShouldSuspend, JsonNode Payload) result = await _db.AwaitEventAsync(_connection, _queueName, _task.TaskId, _task.RunId, checkpointName, eventName, timeout).ConfigureAwait(false);
 
         if (!result.ShouldSuspend)
         {
@@ -193,7 +195,7 @@ public class TaskContext
 
     public async Task Heartbeat(int? seconds = null)
     {
-        await _db.Heartbeat(_connection, _queueName, _task.RunId, seconds ?? _claimTimeout).ConfigureAwait(false);
+        await _db.HeartbeatAsync(_connection, _queueName, _task.RunId, seconds ?? _claimTimeout).ConfigureAwait(false);
     }
 
     public async Task EmitEvent(string eventName, JsonNode? payload = null)
@@ -203,6 +205,6 @@ public class TaskContext
             throw new ArgumentException("eventName must be a non-empty string");
         }
 
-        await _db.EmitEvent(_connection, _queueName, eventName, payload?.ToJsonString() ?? "null").ConfigureAwait(false);
+        await _db.EmitEventAsync(_connection, _queueName, eventName, payload?.ToJsonString() ?? "null").ConfigureAwait(false);
     }
 }

@@ -1,6 +1,8 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using AbsurdSdk.Core;
 using AbsurdSdk.Tests;
+using AbsurdSdk.Workers;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 
@@ -34,13 +36,13 @@ public class AbsurdIntegrationTests
         IAbsurd client = new Absurd(NullLogger<Absurd>.Instance, dataSource);
 
         // Ensure the test queue exists
-        await client.CreateQueue("test-queue");
+        await client.CreateQueueAsync("test-queue");
 
         // We use a TCS to signal when the background worker has actually finished the task
         var completionSource = new TaskCompletionSource<int>();
 
         // Define the Task Logic
-        client.RegisterTask(new TaskRegistrationOptions
+        client.RegisterTaskAsync(new TaskRegistrationOptions
         {
             Queue = "test-queue",
             Name = "add-numbers"
@@ -63,7 +65,7 @@ public class AbsurdIntegrationTests
         });
 
         // ACT
-        await client.Spawn(new SpawnOptions { Queue = "test-queue" }, "add-numbers", new { a = 10, b = 20 });
+        await client.SpawnAsync(new SpawnOptions { Queue = "test-queue" }, "add-numbers", new { a = 10, b = 20 });
 
         AbsurdWorker worker = new AbsurdWorker(new WorkerOptions
         {

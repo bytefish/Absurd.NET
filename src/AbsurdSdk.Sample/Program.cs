@@ -1,6 +1,8 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using AbsurdSdk;
+using AbsurdSdk.Core;
+using AbsurdSdk.Extensions;
 using AbsurdSdk.Sample.Docker;
 using AbsurdSdk.Sample.Jobs;
 using AbsurdSdk.Sample.Models;
@@ -8,7 +10,6 @@ using AbsurdSdk.Sample.Services;
 using AbsurdSdk.Sample.Workers;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
-using Testcontainers.PostgreSql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,13 +49,13 @@ using (var scope = app.Services.CreateScope())
 {
     var absurd = scope.ServiceProvider.GetRequiredService<IAbsurd>();
 
-    await absurd.CreateQueue("orders-queue");
+    await absurd.CreateQueueAsync("orders-queue");
 }
 
 app.MapPost("/order", async (IAbsurd client, [FromBody] OrderData request) =>
 {
     // Start the workflow with explicit options
-    var result = await client.Spawn(new SpawnOptions
+    var result = await client.SpawnAsync(new SpawnOptions
     {
         Queue = "orders-queue",
         MaxAttempts = 3
@@ -66,7 +67,7 @@ app.MapPost("/order", async (IAbsurd client, [FromBody] OrderData request) =>
 app.MapPost("/order/{orderId}/picked", async (IAbsurd client, string orderId, [FromBody] PickingData data) =>
 {
     // This wakes up the suspended task waiting for "order-picked:{orderId}"
-    await client.EmitEvent(
+    await client.EmitEventAsync(
         eventName: $"order-picked:{orderId}",
         payload: data,
         options: new EmitEventOptions { Queue = "orders-queue" }

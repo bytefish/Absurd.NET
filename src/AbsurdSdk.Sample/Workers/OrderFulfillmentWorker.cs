@@ -1,7 +1,9 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using AbsurdSdk.Extensions;
 using AbsurdSdk.Sample.Jobs;
 using AbsurdSdk.Sample.Models;
+using AbsurdSdk.Workers;
 
 namespace AbsurdSdk.Sample.Workers;
 

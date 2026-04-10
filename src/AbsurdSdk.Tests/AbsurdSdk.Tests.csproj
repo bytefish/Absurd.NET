@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -34,18 +34,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Resources\docker\" />
     <Folder Include="Resources\sql\" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="..\..\sql\absurd.sql" Link="Resources\sql\absurd.sql">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="..\..\docker\postgres\postgres.conf" Link="Resources\docker\postgres.conf">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

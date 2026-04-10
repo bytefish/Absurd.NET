@@ -1,18 +1,16 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using AbsurdSdk.Core;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 
-namespace AbsurdSdk;
+namespace AbsurdSdk.Extensions;
 
 public static class AbsurdExtensions
 {
-    public static void RegisterJob<TJob, TParams, TResult>(this IServiceCollection services)
-        where TJob : class, IJob<TParams, TResult>
-    {
-        services.AddTransient<TJob>();
-    }
-
+    /// <summary>
+    /// Extension method to register a job with the Absurd client using its static metadata and dependency injection.
+    /// </summary>
     public static void UseJob<TJob, TParams, TResult>(this IAbsurd client, IServiceProvider provider, Action<TaskRegistrationOptions>? configure = null)
         where TJob : class, IJob<TParams, TResult>
     {
@@ -25,7 +23,7 @@ public static class AbsurdExtensions
             configure(options);
         }
 
-        client.RegisterTask(options, async (ctx, jsonParams) =>
+        client.RegisterTaskAsync(options, async (ctx, jsonParams) =>
         {
             using IServiceScope scope = provider.CreateScope();
 

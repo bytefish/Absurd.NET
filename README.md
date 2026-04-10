@@ -11,14 +11,6 @@ Think of it as a first attempt at a .NET API. Feedback is greatly appreciated.
 We start by defining a `IJob`, which is going to model an Order Fulfillment Task:
 
 ```csharp
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
-using AbsurdSdk.Sample.Models;
-using AbsurdSdk.Sample.Services;
-using System.Text.Json.Nodes;
-
-namespace AbsurdSdk.Sample.Jobs;
-
 public class FulfillOrderJob : IJob<OrderData, FulfillOrderResult>
 {
     private readonly PaymentService _paymentService;
@@ -33,6 +25,7 @@ public class FulfillOrderJob : IJob<OrderData, FulfillOrderResult>
         DefaultMaxAttempts = 3
     };
 
+    // Constructor Injection works perfectly here!
     public FulfillOrderJob(
         PaymentService paymentService,
         ShippingService shippingService,
@@ -66,7 +59,7 @@ public class FulfillOrderJob : IJob<OrderData, FulfillOrderResult>
             stepName: "wait-for-picking"
         );
 
-        // Ship
+        // Ship the items
         ShippingResult shipment = await ctx.Step("ship-items", async () =>
         {
             return await _shippingService.ShipAsync(order.OrderId, order.Items);
@@ -104,11 +97,6 @@ We can then create a Background Worker to poll for Tasks to run:
 ```csharp
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using AbsurdSdk.Sample.Jobs;
-using AbsurdSdk.Sample.Models;
-
-namespace AbsurdSdk.Sample.Workers;
-
 public class SampleOrderWorker : BackgroundService
 {
     private readonly IAbsurd _client;
@@ -126,7 +114,7 @@ public class SampleOrderWorker : BackgroundService
         _client.UseJob<FulfillOrderJob, OrderData, FulfillOrderResult>(_provider);
 
         // Setup the worker to poll the queue
-        AbsurdWorker _absurdWorker = new AbsurdWorker(new WorkerOptions
+        AbsurdWorker absurdWorker = new AbsurdWorker(new WorkerOptions
         {
             Queue = "orders-queue",
             WorkerId = "web-worker-01",
@@ -136,7 +124,7 @@ public class SampleOrderWorker : BackgroundService
         }, _client);
 
         // Start the worker loop
-        await _absurdWorker.ExecuteAsync(stoppingToken);
+        await absurdWorker.ExecuteAsync(stoppingToken);
     }
 }
 ```
@@ -147,7 +135,7 @@ And finally we define two endpoints to create an order and emit events to it:
 app.MapPost("/order", async (IAbsurd client, [FromBody] OrderData request) =>
 {
     // Start the workflow with explicit options
-    var result = await client.Spawn(new SpawnOptions
+    var result = await client.SpawnAsync(new SpawnOptions
     {
         Queue = "orders-queue",
         MaxAttempts = 3
@@ -159,7 +147,7 @@ app.MapPost("/order", async (IAbsurd client, [FromBody] OrderData request) =>
 app.MapPost("/order/{orderId}/picked", async (IAbsurd client, string orderId, [FromBody] PickingData data) =>
 {
     // This wakes up the suspended task waiting for "order-picked:{orderId}"
-    await client.EmitEvent(
+    await client.EmitEventAsync(
         eventName: $"order-picked:{orderId}",
         payload: data,
         options: new EmitEventOptions { Queue = "orders-queue" }

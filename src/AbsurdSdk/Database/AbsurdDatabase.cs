@@ -1,17 +1,20 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using AbsurdSdk.Core;
+using AbsurdSdk.Exceptions;
 using Npgsql;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace AbsurdSdk;
+namespace AbsurdSdk.Database;
 
 /// <summary>
-/// Encapsulates all raw database interactions.
+/// Encapsulates all raw database interactions. It is used to perform all the necessary operations on the database to 
+/// manage queues, tasks, checkpoints, and events in the Absurd system.
 /// </summary>
 public class AbsurdDatabase
 {
-    public async Task CreateQueue(NpgsqlConnection conn, string queueName)
+    public async Task CreateQueueAsync(NpgsqlConnection conn, string queueName)
     {
         using NpgsqlCommand cmd = new("SELECT absurd.create_queue(@queueName)", conn);
 
@@ -20,7 +23,7 @@ public class AbsurdDatabase
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task DropQueue(NpgsqlConnection conn, string queueName)
+    public async Task DropQueueAsync(NpgsqlConnection conn, string queueName)
     {
         using NpgsqlCommand cmd = new("SELECT absurd.drop_queue(@queueName)", conn);
 
@@ -29,7 +32,7 @@ public class AbsurdDatabase
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task<IEnumerable<string>> ListQueues(NpgsqlConnection conn)
+    public async Task<IEnumerable<string>> ListQueuesAsync(NpgsqlConnection conn)
     {
         List<string> results = new();
 
@@ -44,7 +47,7 @@ public class AbsurdDatabase
         return results;
     }
 
-    public async Task<SpawnResult> SpawnTask(NpgsqlConnection conn, string queue, string taskName, string paramsJson, string optionsJson)
+    public async Task<SpawnResult> SpawnTaskAsync(NpgsqlConnection conn, string queue, string taskName, string paramsJson, string optionsJson)
     {
         using NpgsqlCommand cmd = new("SELECT task_id, run_id, attempt FROM absurd.spawn_task(@queue, @taskName, @paramsJson::jsonb, @optionsJson::jsonb)", conn);
 
@@ -66,7 +69,7 @@ public class AbsurdDatabase
         throw new Exception("Failed to spawn task");
     }
 
-    public async Task CancelTask(NpgsqlConnection conn, string queue, string taskId)
+    public async Task CancelTaskAsync(NpgsqlConnection conn, string queue, string taskId)
     {
         using NpgsqlCommand cmd = new("SELECT absurd.cancel_task(@queue, @taskId)", conn);
         
@@ -76,7 +79,7 @@ public class AbsurdDatabase
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task EmitEvent(NpgsqlConnection conn, string queue, string eventName, string payloadJson)
+    public async Task EmitEventAsync(NpgsqlConnection conn, string queue, string eventName, string payloadJson)
     {
         using NpgsqlCommand cmd = new("SELECT absurd.emit_event(@queue, @eventName, @payloadJson::jsonb)", conn);
 
@@ -87,7 +90,7 @@ public class AbsurdDatabase
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task<IEnumerable<ClaimedTask>> ClaimTasks(NpgsqlConnection conn, string queue, string workerId, int timeout, int count)
+    public async Task<IEnumerable<ClaimedTask>> ClaimTasksAsync(NpgsqlConnection conn, string queue, string workerId, int timeout, int count)
     {
         List<ClaimedTask> tasks = new();
         using NpgsqlCommand cmd = new(
@@ -121,7 +124,7 @@ public class AbsurdDatabase
         return tasks;
     }
 
-    public async Task CompleteRun(NpgsqlConnection conn, string queue, string runId, string resultJson)
+    public async Task CompleteRunAsync(NpgsqlConnection conn, string queue, string runId, string resultJson)
     {
         using NpgsqlCommand cmd = new("SELECT absurd.complete_run(@queue, @runId, @resultJson::jsonb)", conn);
 
@@ -132,7 +135,7 @@ public class AbsurdDatabase
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task FailRun(NpgsqlConnection conn, string queue, string runId, string errorJson)
+    public async Task FailRunAsync(NpgsqlConnection conn, string queue, string runId, string errorJson)
     {
         using NpgsqlCommand cmd = new("SELECT absurd.fail_run(@queue, @runId, @errorJson::jsonb, null)", conn);
 
@@ -143,7 +146,7 @@ public class AbsurdDatabase
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task<IEnumerable<CheckpointRow>> GetCheckpointStates(NpgsqlConnection conn, string queue, string taskId, string runId)
+    public async Task<IEnumerable<CheckpointRow>> GetCheckpointStatesAsync(NpgsqlConnection conn, string queue, string taskId, string runId)
     {
         List<CheckpointRow> rows = new();
 
@@ -166,10 +169,11 @@ public class AbsurdDatabase
                 UpdatedAt = reader.GetDateTime(4)
             });
         }
+
         return rows;
     }
 
-    public async Task<JsonNode?> GetSingleCheckpoint(NpgsqlConnection conn, string queue, string taskId, string checkpointName)
+    public async Task<JsonNode?> GetSingleCheckpointAsync(NpgsqlConnection conn, string queue, string taskId, string checkpointName)
     {
         using NpgsqlCommand cmd = new("SELECT state FROM absurd.get_task_checkpoint_state(@queue, @taskId, @checkpointName)", conn);
 
@@ -187,9 +191,9 @@ public class AbsurdDatabase
         return null;
     }
 
-    public async Task PersistCheckpoint(NpgsqlConnection conn, string queue, string taskId, string runId, string checkpointName, string stateJson, int timeout)
+    public async Task PersistCheckpointAsync(NpgsqlConnection conn, string queue, string taskId, string runId, string checkpointName, string stateJson, int timeout)
     {
-        await ExecuteWithCancelCheck(async () =>
+        await ExecuteWithCancelCheckAsync(async () =>
         {
             using NpgsqlCommand cmd = new(
                 "SELECT absurd.set_task_checkpoint_state(@queue, @taskId, @checkpointName, @stateJson::jsonb, @runId, @timeout)", conn);
@@ -205,7 +209,7 @@ public class AbsurdDatabase
         });
     }
 
-    public async Task ScheduleRun(NpgsqlConnection conn, string queue, string runId, DateTime wakeAt)
+    public async Task ScheduleRunAsync(NpgsqlConnection conn, string queue, string runId, DateTime wakeAt)
     {
         using NpgsqlCommand cmd = new("SELECT absurd.schedule_run(@queue, @runId, @wakeAt)", conn);
 
@@ -216,9 +220,9 @@ public class AbsurdDatabase
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
-    public async Task Heartbeat(NpgsqlConnection conn, string queue, string runId, int seconds)
+    public async Task HeartbeatAsync(NpgsqlConnection conn, string queue, string runId, int seconds)
     {
-        await ExecuteWithCancelCheck(async () =>
+        await ExecuteWithCancelCheckAsync(async () =>
         {
             using NpgsqlCommand cmd = new("SELECT absurd.extend_claim(@queue, @runId, @seconds)", conn);
 
@@ -230,9 +234,9 @@ public class AbsurdDatabase
         });
     }
 
-    public async Task<(bool ShouldSuspend, JsonNode Payload)> AwaitEvent(NpgsqlConnection conn, string queue, string taskId, string runId, string checkpointName, string eventName, int? timeout)
+    public async Task<(bool ShouldSuspend, JsonNode Payload)> AwaitEventAsync(NpgsqlConnection conn, string queue, string taskId, string runId, string checkpointName, string eventName, int? timeout)
     {
-        return await ExecuteWithCancelCheck(async () =>
+        return await ExecuteWithCancelCheckAsync(async () =>
         {
             using NpgsqlCommand cmd = new("SELECT should_suspend, payload FROM absurd.await_event(@queue, @taskId, @runId, @checkpointName, @eventName, @timeout)", conn);
             
@@ -267,7 +271,7 @@ public class AbsurdDatabase
         return JsonSerializer.Deserialize<JsonNode>(reader.GetString(ordinal));
     }
 
-    private async Task<T> ExecuteWithCancelCheck<T>(Func<Task<T>> action)
+    private async Task<T> ExecuteWithCancelCheckAsync<T>(Func<Task<T>> action)
     {
         try
         {

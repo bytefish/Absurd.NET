@@ -1,8 +1,9 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using AbsurdSdk.Core;
 using System.Collections.Concurrent;
 
-namespace AbsurdSdk
+namespace AbsurdSdk.Workers
 {
     /// <summary>
     /// A standalone worker that polls for tasks and executes them using the provided Absurd Client.
@@ -44,7 +45,7 @@ namespace AbsurdSdk
                         continue;
                     }
 
-                    var messages = await _client.ClaimTasks(_options.Queue, _options.WorkerId, _options.ClaimTimeout, toClaim).ConfigureAwait(false);
+                    var messages = await _client.ClaimTasksAsync(_options.Queue, _options.WorkerId, _options.ClaimTimeout, toClaim).ConfigureAwait(false);
 
                     var msgList = new List<ClaimedTask>(messages);
 
@@ -83,7 +84,7 @@ namespace AbsurdSdk
         {
             try
             {
-                await _client.ExecuteTask(task, _options.Queue, _options.ClaimTimeout, _options.FatalOnLeaseTimeout).ConfigureAwait(false);
+                await _client.ExecuteTaskAsync(task, _options.Queue, _options.ClaimTimeout, _options.FatalOnLeaseTimeout).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
