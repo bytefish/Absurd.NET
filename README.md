@@ -4,9 +4,21 @@ This is a .NET implementation of the Absurd SDK, which has been described at:
 
 * https://github.com/earendil-works/absurd
 
-Think of it as a first attempt at a .NET API. Feedback is greatly appreciated.
+## 1. Setup ##
 
-## Usage
+To include AbsurdSdk in your project, install the NuGet package using the .NET CLI:
+
+```
+dotnet add package AbsurdSdk
+```
+
+Alternatively, you can use the NuGet Package Manager in Visual Studio:
+
+```
+Install-PackageAbsurdSdk
+```
+
+## 2. Quick Start ##
 
 We start by defining a `IJob`, which is going to model an Order Fulfillment Task:
 
