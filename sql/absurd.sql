@@ -26,8 +26,8 @@
 -- `get_task_checkpoint_state`, `get_task_checkpoint_states`) write arbitrary
 -- JSON payloads keyed by task and step, while `await_event` and `emit_event`
 -- coordinate sleepers and external signals so that tasks can suspend and resume
--- without losing context.  Events are uniquely indexed and can only be fired
--- once per name.
+-- without losing context.  Events are uniquely indexed and use first-write-wins
+-- semantics: the first emission per name is cached, later emits are ignored.
 
 create extension if not exists "uuid-ossp";
 
@@ -57,11 +57,45 @@ create table if not exists absurd.queues (
   created_at timestamptz not null default absurd.current_time()
 );
 
+-- Returns the Absurd schema release version baked into this SQL file.
+-- During development this is usually "main" and release automation replaces
+-- it with the actual tag version.
+
+create or replace function absurd.get_schema_version ()
+  returns text
+  language sql
+as $$
+  select 'main'::text;
+$$;
+
+-- Queue names are used in generated table/index identifiers.
+-- We intentionally cap UTF-8 byte length so generated explicit index names
+-- (for instance r_<queue>_sai) stay within PostgreSQL's 63-byte identifier
+-- limit. Character set is otherwise delegated to PostgreSQL quoted-ident rules.
+create function absurd.validate_queue_name (p_queue_name text)
+  returns text
+  language plpgsql
+as $$
+begin
+  if p_queue_name is null or length(trim(p_queue_name)) = 0 then
+    raise exception 'Queue name must be provided';
+  end if;
+
+  if octet_length(p_queue_name) > 57 then
+    raise exception 'Queue name "%" is too long (max 57 bytes).', p_queue_name;
+  end if;
+
+  return p_queue_name;
+end;
+$$;
+
 create function absurd.ensure_queue_tables (p_queue_name text)
   returns void
   language plpgsql
 as $$
 begin
+  perform absurd.validate_queue_name(p_queue_name);
+
   execute format(
     'create table if not exists absurd.%I (
         task_id uuid primary key,
@@ -77,7 +111,8 @@ begin
         attempts integer not null default 0,
         last_attempt_run uuid,
         completed_payload jsonb,
-        cancelled_at timestamptz
+        cancelled_at timestamptz,
+        idempotency_key text unique
      ) with (fillfactor=70)',
     't_' || p_queue_name
   );
@@ -151,9 +186,29 @@ begin
   );
 
   execute format(
+    'create index if not exists %I on absurd.%I (claim_expires_at)
+      where state = ''running''
+        and claim_expires_at is not null',
+    ('r_' || p_queue_name) || '_cei',
+    'r_' || p_queue_name
+  );
+
+  execute format(
     'create index if not exists %I on absurd.%I (event_name)',
     ('w_' || p_queue_name) || '_eni',
     'w_' || p_queue_name
+  );
+
+  execute format(
+    'create index if not exists %I on absurd.%I (task_id)',
+    ('w_' || p_queue_name) || '_ti',
+    'w_' || p_queue_name
+  );
+
+  execute format(
+    'create index if not exists %I on absurd.%I (emitted_at)',
+    ('e_' || p_queue_name) || '_eai',
+    'e_' || p_queue_name
   );
 end;
 $$;
@@ -166,13 +221,7 @@ create function absurd.create_queue (p_queue_name text)
   language plpgsql
 as $$
 begin
-  if p_queue_name is null or length(trim(p_queue_name)) = 0 then
-    raise exception 'Queue name must be provided';
-  end if;
-
-  if length(p_queue_name) + 2 > 50 then
-    raise exception 'Queue name "%" is too long', p_queue_name;
-  end if;
+  p_queue_name := absurd.validate_queue_name(p_queue_name);
 
   begin
     insert into absurd.queues (queue_name)
@@ -186,6 +235,8 @@ end;
 $$;
 
 -- Drop a queue if it exists.
+-- We intentionally don't validate the provided name here so legacy queues
+-- created under older naming rules can still be removed.
 create function absurd.drop_queue (p_queue_name text)
   returns void
   language plpgsql
@@ -219,7 +270,46 @@ as $$
   select queue_name from absurd.queues order by queue_name;
 $$;
 
+-- Returns the current state and terminal payload (if any) for a task.
+--
+-- Non-terminal states (pending/running/sleeping) return result/failure_reason
+-- as NULL. Completed tasks expose completed_payload as result. Failed tasks
+-- expose the last run failure_reason.
+create function absurd.get_task_result (
+  p_queue_name text,
+  p_task_id uuid
+)
+  returns table (
+    task_id uuid,
+    state text,
+    result jsonb,
+    failure_reason jsonb
+  )
+  language plpgsql
+as $$
+begin
+  p_queue_name := absurd.validate_queue_name(p_queue_name);
+
+  return query execute format(
+    'select t.task_id,
+            t.state,
+            case when t.state = ''completed'' then t.completed_payload else null end as result,
+            case when t.state = ''failed'' then r.failure_reason else null end as failure_reason
+       from absurd.%I t
+       left join absurd.%I r on r.run_id = t.last_attempt_run
+      where t.task_id = $1',
+    't_' || p_queue_name,
+    'r_' || p_queue_name
+  ) using p_task_id;
+end;
+$$;
+
 -- Spawns a given task in a queue.
+--
+-- If an idempotency_key is provided in p_options, the function will check if a task
+-- with that key already exists. If so, it returns the existing task_id with run_id
+-- and attempt set to NULL to signal "already exists". This is race-safe via
+-- INSERT ... ON CONFLICT DO NOTHING.
 create function absurd.spawn_task (
   p_queue_name text,
   p_task_name text,
@@ -229,7 +319,8 @@ create function absurd.spawn_task (
   returns table (
     task_id uuid,
     run_id uuid,
-    attempt integer
+    attempt integer,
+    created boolean
   )
   language plpgsql
 as $$
@@ -241,6 +332,9 @@ declare
   v_retry_strategy jsonb;
   v_max_attempts integer;
   v_cancellation jsonb;
+  v_idempotency_key text;
+  v_existing_task_id uuid;
+  v_row_count integer;
   v_now timestamptz := absurd.current_time();
   v_params jsonb := coalesce(p_params, 'null'::jsonb);
 begin
@@ -258,14 +352,42 @@ begin
       end if;
     end if;
     v_cancellation := p_options->'cancellation';
+    v_idempotency_key := p_options->>'idempotency_key';
   end if;
 
-  execute format(
-    'insert into absurd.%I (task_id, task_name, params, headers, retry_strategy, max_attempts, cancellation, enqueue_at, first_started_at, state, attempts, last_attempt_run, completed_payload, cancelled_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, null, ''pending'', $9, $10, null, null)',
-    't_' || p_queue_name
-  )
-  using v_task_id, p_task_name, v_params, v_headers, v_retry_strategy, v_max_attempts, v_cancellation, v_now, v_attempt, v_run_id;
+  -- If idempotency_key is provided, use INSERT ... ON CONFLICT DO NOTHING
+  if v_idempotency_key is not null then
+    execute format(
+      'insert into absurd.%I (task_id, task_name, params, headers, retry_strategy, max_attempts, cancellation, enqueue_at, first_started_at, state, attempts, last_attempt_run, completed_payload, cancelled_at, idempotency_key)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, null, ''pending'', $9, $10, null, null, $11)
+       on conflict (idempotency_key) do nothing',
+      't_' || p_queue_name
+    )
+    using v_task_id, p_task_name, v_params, v_headers, v_retry_strategy, v_max_attempts, v_cancellation, v_now, v_attempt, v_run_id, v_idempotency_key;
+
+    get diagnostics v_row_count = row_count;
+
+    if v_row_count = 0 then
+      -- Task already exists, look up existing task info
+      execute format(
+        'select task_id, last_attempt_run, attempts from absurd.%I where idempotency_key = $1',
+        't_' || p_queue_name
+      )
+      into v_existing_task_id, v_run_id, v_attempt
+      using v_idempotency_key;
+
+      return query select v_existing_task_id, v_run_id, v_attempt, false;
+      return;
+    end if;
+  else
+    -- No idempotency key, insert normally
+    execute format(
+      'insert into absurd.%I (task_id, task_name, params, headers, retry_strategy, max_attempts, cancellation, enqueue_at, first_started_at, state, attempts, last_attempt_run, completed_payload, cancelled_at, idempotency_key)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, null, ''pending'', $9, $10, null, null, null)',
+      't_' || p_queue_name
+    )
+    using v_task_id, p_task_name, v_params, v_headers, v_retry_strategy, v_max_attempts, v_cancellation, v_now, v_attempt, v_run_id;
+  end if;
 
   execute format(
     'insert into absurd.%I (run_id, task_id, attempt, state, available_at, wake_event, event_payload, result, failure_reason)
@@ -274,7 +396,7 @@ begin
   )
   using v_run_id, v_task_id, v_attempt, v_now;
 
-  return query select v_task_id, v_run_id, v_attempt;
+  return query select v_task_id, v_run_id, v_attempt, true;
 end;
 $$;
 
@@ -308,46 +430,46 @@ declare
   v_claim_until timestamptz := null;
   v_sql text;
   v_expired_run record;
+  v_cancel_candidate record;
+  v_expired_sweep_limit integer;
 begin
   if v_claim_timeout > 0 then
     v_claim_until := v_now + make_interval(secs => v_claim_timeout);
   end if;
 
+  -- Keep claim polling work bounded: process at most v_qty expired leases
+  -- per claim call.
+  v_expired_sweep_limit := greatest(v_qty, 1);
+
   -- Apply cancellation rules before claiming.
-  execute format(
-    'with limits as (
-        select task_id,
-               (cancellation->>''max_delay'')::bigint as max_delay,
-               (cancellation->>''max_duration'')::bigint as max_duration,
-               enqueue_at,
-               first_started_at,
-               state
-          from absurd.%I
+  --
+  -- Use cancel_task() so lock order stays consistent (runs first, task second)
+  -- with complete_run()/fail_run().
+  for v_cancel_candidate in
+    execute format(
+      'select task_id
+         from absurd.%I
         where state in (''pending'', ''sleeping'', ''running'')
-     ),
-     to_cancel as (
-        select task_id
-          from limits
-         where
-           (
-             max_delay is not null
-             and first_started_at is null
-             and extract(epoch from ($1 - enqueue_at)) >= max_delay
-           )
-           or
-           (
-             max_duration is not null
-             and first_started_at is not null
-             and extract(epoch from ($1 - first_started_at)) >= max_duration
-           )
-     )
-     update absurd.%I t
-        set state = ''cancelled'',
-            cancelled_at = coalesce(t.cancelled_at, $1)
-      where t.task_id in (select task_id from to_cancel)',
-    't_' || p_queue_name,
-    't_' || p_queue_name
-  ) using v_now;
+          and (
+            (
+              (cancellation->>''max_delay'')::bigint is not null
+              and first_started_at is null
+              and extract(epoch from ($1 - enqueue_at)) >= (cancellation->>''max_delay'')::bigint
+            )
+            or
+            (
+              (cancellation->>''max_duration'')::bigint is not null
+              and first_started_at is not null
+              and extract(epoch from ($1 - first_started_at)) >= (cancellation->>''max_duration'')::bigint
+            )
+          )
+        order by task_id',
+      't_' || p_queue_name
+    )
+  using v_now
+  loop
+    perform absurd.cancel_task(p_queue_name, v_cancel_candidate.task_id);
+  end loop;
 
   for v_expired_run in
     execute format(
@@ -359,10 +481,12 @@ begin
         where state = ''running''
           and claim_expires_at is not null
           and claim_expires_at <= $1
+        order by claim_expires_at, run_id
+        limit $2
         for update skip locked',
       'r_' || p_queue_name
     )
-  using v_now
+  using v_now, v_expired_sweep_limit
   loop
     perform absurd.fail_run(
       p_queue_name,
@@ -377,19 +501,6 @@ begin
       null
     );
   end loop;
-
-  execute format(
-    'update absurd.%I r
-        set state = ''cancelled'',
-            claimed_by = null,
-            claim_expires_at = null,
-            available_at = $1,
-            wake_event = null
-      where task_id in (select task_id from absurd.%I where state = ''cancelled'')
-        and r.state <> ''cancelled''',
-    'r_' || p_queue_name,
-    't_' || p_queue_name
-  ) using v_now;
 
   v_sql := format(
     'with candidate as (
@@ -583,7 +694,6 @@ declare
   v_first_started timestamptz;
   v_cancellation jsonb;
   v_max_duration bigint;
-  v_task_state text;
   v_task_cancel boolean := false;
   v_new_run_id uuid;
   v_task_state_after text;
@@ -607,13 +717,13 @@ begin
   end if;
 
   execute format(
-    'select retry_strategy, max_attempts, first_started_at, cancellation, state
+    'select retry_strategy, max_attempts, first_started_at, cancellation
        from absurd.%I
       where task_id = $1
       for update',
     't_' || p_queue_name
   )
-  into v_retry_strategy, v_max_attempts, v_first_started, v_cancellation, v_task_state
+  into v_retry_strategy, v_max_attempts, v_first_started, v_cancellation
   using v_task_id;
 
   execute format(
@@ -672,11 +782,10 @@ begin
       v_last_attempt_run := v_new_run_id;
       execute format(
         'insert into absurd.%I (run_id, task_id, attempt, state, available_at, wake_event, event_payload, result, failure_reason)
-         values ($1, $2, $3, %L, $4, null, null, null, null)',
-        'r_' || p_queue_name,
-        v_task_state_after
+         values ($1, $2, $3, $4, $5, null, null, null, null)',
+        'r_' || p_queue_name
       )
-      using v_new_run_id, v_task_id, v_next_attempt, v_next_available;
+      using v_new_run_id, v_task_id, v_next_attempt, v_task_state_after, v_next_available;
     end if;
   end if;
 
@@ -689,19 +798,152 @@ begin
 
   execute format(
     'update absurd.%I
-        set state = %L,
+        set state = $2,
             attempts = greatest(attempts, $3),
             last_attempt_run = $4,
             cancelled_at = coalesce(cancelled_at, $5)
       where task_id = $1',
-    't_' || p_queue_name,
-    v_task_state_after
+    't_' || p_queue_name
   ) using v_task_id, v_task_state_after, v_recorded_attempt, v_last_attempt_run, v_cancelled_at;
 
   execute format(
     'delete from absurd.%I where run_id = $1',
     'w_' || p_queue_name
   ) using p_run_id;
+end;
+$$;
+
+-- Retries a failed task either by extending attempts on the same task or by
+-- spawning a brand new task from the original inputs.
+--
+-- Options:
+-- - spawn_new (boolean, default false): create a new task instead of retrying in-place.
+-- - max_attempts (integer, optional): for in-place retry, defaults to
+--   coalesce(current max_attempts, current attempts) + 1 and must be greater
+--   than current attempts; for spawn_new it overrides copied max_attempts on
+--   the new task.
+create function absurd.retry_task (
+  p_queue_name text,
+  p_task_id uuid,
+  p_options jsonb default '{}'::jsonb
+)
+  returns table (
+    task_id uuid,
+    run_id uuid,
+    attempt integer,
+    created boolean
+  )
+  language plpgsql
+as $$
+declare
+  v_now timestamptz := absurd.current_time();
+  v_spawn_new boolean := false;
+  v_requested_max_attempts integer;
+
+  v_task_name text;
+  v_params jsonb;
+  v_headers jsonb;
+  v_retry_strategy jsonb;
+  v_task_max_attempts integer;
+  v_cancellation jsonb;
+  v_task_attempts integer;
+  v_task_state text;
+
+  v_new_run_id uuid;
+  v_new_attempt integer;
+  v_spawn_options jsonb;
+begin
+  if p_options is not null then
+    if p_options ? 'spawn_new' then
+      v_spawn_new := coalesce((p_options->>'spawn_new')::boolean, false);
+    end if;
+    if p_options ? 'max_attempts' then
+      v_requested_max_attempts := (p_options->>'max_attempts')::int;
+      if v_requested_max_attempts is not null and v_requested_max_attempts < 1 then
+        raise exception 'max_attempts must be >= 1';
+      end if;
+    end if;
+  end if;
+
+  execute format(
+    'select task_name,
+            params,
+            headers,
+            retry_strategy,
+            max_attempts,
+            cancellation,
+            attempts,
+            state
+       from absurd.%I
+      where task_id = $1
+      for update',
+    't_' || p_queue_name
+  )
+  into v_task_name,
+       v_params,
+       v_headers,
+       v_retry_strategy,
+       v_task_max_attempts,
+       v_cancellation,
+       v_task_attempts,
+       v_task_state
+  using p_task_id;
+
+  if v_task_state is null then
+    raise exception 'Task "%" not found in queue "%"', p_task_id, p_queue_name;
+  end if;
+
+  if v_task_state <> 'failed' then
+    raise exception 'Task "%" is not currently failed in queue "%"', p_task_id, p_queue_name;
+  end if;
+
+  if v_spawn_new then
+    v_spawn_options := jsonb_strip_nulls(jsonb_build_object(
+      'headers', v_headers,
+      'retry_strategy', v_retry_strategy,
+      'max_attempts', coalesce(v_requested_max_attempts, v_task_max_attempts),
+      'cancellation', v_cancellation
+    ));
+
+    return query
+      select s.task_id, s.run_id, s.attempt, s.created
+        from absurd.spawn_task(p_queue_name, v_task_name, v_params, v_spawn_options) s;
+    return;
+  end if;
+
+  if v_requested_max_attempts is null then
+    v_requested_max_attempts := coalesce(v_task_max_attempts, v_task_attempts) + 1;
+  end if;
+
+  if v_requested_max_attempts <= v_task_attempts then
+    raise exception 'max_attempts (%) must be greater than current attempts (%)',
+      v_requested_max_attempts,
+      v_task_attempts;
+  end if;
+
+  v_new_run_id := absurd.portable_uuidv7();
+  v_new_attempt := v_task_attempts + 1;
+
+  execute format(
+    'insert into absurd.%I (run_id, task_id, attempt, state, available_at, wake_event, event_payload, result, failure_reason)
+     values ($1, $2, $3, ''pending'', $4, null, null, null, null)',
+    'r_' || p_queue_name
+  )
+  using v_new_run_id, p_task_id, v_new_attempt, v_now;
+
+  execute format(
+    'update absurd.%I
+        set state = ''pending'',
+            attempts = greatest(attempts, $2),
+            max_attempts = $3,
+            last_attempt_run = $4,
+            cancelled_at = null
+      where task_id = $1',
+    't_' || p_queue_name
+  )
+  using p_task_id, v_new_attempt, v_requested_max_attempts, v_new_run_id;
+
+  return query select p_task_id, v_new_run_id, v_new_attempt, false;
 end;
 $$;
 
@@ -722,20 +964,21 @@ declare
   v_existing_attempt integer;
   v_existing_owner uuid;
   v_task_state text;
+  v_run_state text;
 begin
   if p_step_name is null or length(trim(p_step_name)) = 0 then
     raise exception 'step_name must be provided';
   end if;
 
   execute format(
-    'select r.attempt, t.state
+    'select r.attempt, r.state, t.state
        from absurd.%I r
        join absurd.%I t on t.task_id = r.task_id
       where r.run_id = $1',
     'r_' || p_queue_name,
     't_' || p_queue_name
   )
-  into v_new_attempt, v_task_state
+  into v_new_attempt, v_run_state, v_task_state
   using p_owner_run;
 
   if v_new_attempt is null then
@@ -744,6 +987,10 @@ begin
 
   if v_task_state = 'cancelled' then
     raise exception sqlstate 'AB001' using message = 'Task has been cancelled';
+  end if;
+
+  if v_run_state = 'failed' then
+    raise exception sqlstate 'AB002' using message = format('Run "%s" has already failed in queue "%s"', p_owner_run, p_queue_name);
   end if;
 
   -- Extend the claim if requested
@@ -797,38 +1044,59 @@ create function absurd.extend_claim (
 as $$
 declare
   v_now timestamptz := absurd.current_time();
-  v_extend_by integer;
-  v_claim_timeout integer;
-  v_rows_updated integer;
   v_task_state text;
+  v_run_state text;
+  v_claim_expires_at timestamptz;
 begin
+  if p_extend_by is null or p_extend_by <= 0 then
+    raise exception 'extend_by must be > 0';
+  end if;
+
   execute format(
-    'select t.state
+    'select r.state,
+            r.claim_expires_at,
+            t.state
        from absurd.%I r
        join absurd.%I t on t.task_id = r.task_id
-      where r.run_id = $1',
+      where r.run_id = $1
+      for update',
     'r_' || p_queue_name,
     't_' || p_queue_name
   )
-  into v_task_state
+  into v_run_state, v_claim_expires_at, v_task_state
   using p_run_id;
+
+  if v_run_state is null then
+    raise exception 'Run "%" not found in queue "%"', p_run_id, p_queue_name;
+  end if;
 
   if v_task_state = 'cancelled' then
     raise exception sqlstate 'AB001' using message = 'Task has been cancelled';
   end if;
 
+  if v_run_state <> 'running' then
+    if v_run_state = 'failed' then
+      raise exception sqlstate 'AB002' using message = format('Run "%s" has already failed in queue "%s"', p_run_id, p_queue_name);
+    end if;
+    raise exception 'Run "%" is not currently running in queue "%"', p_run_id, p_queue_name;
+  end if;
+
+  if v_claim_expires_at is null then
+    raise exception 'Run "%" does not have an active claim in queue "%"', p_run_id, p_queue_name;
+  end if;
+
   execute format(
     'update absurd.%I
         set claim_expires_at = $2 + make_interval(secs => $3)
-      where run_id = $1
-        and state = ''running''
-        and claim_expires_at is not null',
+      where run_id = $1',
     'r_' || p_queue_name
   )
   using p_run_id, v_now, p_extend_by;
 end;
 $$;
 
+-- Returns one checkpoint by name. By default only committed checkpoint rows
+-- are visible; pass p_include_pending = true to include pending rows.
 create function absurd.get_task_checkpoint_state (
   p_queue_name text,
   p_task_id uuid,
@@ -849,12 +1117,15 @@ begin
     'select checkpoint_name, state, status, owner_run_id, updated_at
        from absurd.%I
       where task_id = $1
-        and checkpoint_name = $2',
+        and checkpoint_name = $2
+        and ($3 or status = ''committed'')',
     'c_' || p_queue_name
-  ) using p_task_id, p_step_name;
+  ) using p_task_id, p_step_name, coalesce(p_include_pending, false);
 end;
 $$;
 
+-- Returns committed checkpoints visible to the given run. The run must belong
+-- to the provided task, and checkpoints from later attempts are hidden.
 create function absurd.get_task_checkpoint_states (
   p_queue_name text,
   p_task_id uuid,
@@ -869,14 +1140,42 @@ create function absurd.get_task_checkpoint_states (
   )
   language plpgsql
 as $$
+declare
+  v_run_task_id uuid;
+  v_run_attempt integer;
 begin
-  return query execute format(
-    'select checkpoint_name, state, status, owner_run_id, updated_at
+  execute format(
+    'select task_id, attempt
        from absurd.%I
-      where task_id = $1
-      order by updated_at asc',
-    'c_' || p_queue_name
-  ) using p_task_id;
+      where run_id = $1',
+    'r_' || p_queue_name
+  )
+  into v_run_task_id, v_run_attempt
+  using p_run_id;
+
+  if v_run_task_id is null then
+    raise exception 'Run "%" not found in queue "%"', p_run_id, p_queue_name;
+  end if;
+
+  if v_run_task_id <> p_task_id then
+    raise exception 'Run "%" does not belong to task "%" in queue "%"', p_run_id, p_task_id, p_queue_name;
+  end if;
+
+  return query execute format(
+    'select c.checkpoint_name,
+            c.state,
+            c.status,
+            c.owner_run_id,
+            c.updated_at
+       from absurd.%1$I c
+       left join absurd.%2$I owner_run on owner_run.run_id = c.owner_run_id
+      where c.task_id = $1
+        and c.status = ''committed''
+        and (owner_run.attempt is null or owner_run.attempt <= $2)
+      order by c.updated_at asc',
+    'c_' || p_queue_name,
+    'r_' || p_queue_name
+  ) using p_task_id, v_run_attempt;
 end;
 $$;
 
@@ -933,6 +1232,29 @@ begin
     return query select false, v_checkpoint_payload;
     return;
   end if;
+
+  -- Ensure a row exists for this event so we can take a row-level lock.
+  --
+  -- We use payload IS NULL as the sentinel for "not emitted yet".  emit_event
+  -- always writes a non-NULL payload (at minimum JSON null).
+  --
+  -- Lock ordering is important to avoid deadlocks: await_event locks the event
+  -- row first (FOR SHARE) and then the run row (FOR UPDATE).  emit_event
+  -- naturally locks the event row via its UPSERT before touching waits/runs.
+  execute format(
+    'insert into absurd.%I (event_name, payload, emitted_at)
+     values ($1, null, ''epoch''::timestamptz)
+     on conflict (event_name) do nothing',
+    'e_' || p_queue_name
+  ) using p_event_name;
+
+  execute format(
+    'select 1
+       from absurd.%I
+      where event_name = $1
+      for share',
+    'e_' || p_queue_name
+  ) using p_event_name;
 
   execute format(
     'select r.state, r.event_payload, r.wake_event, t.state
@@ -1055,19 +1377,33 @@ as $$
 declare
   v_now timestamptz := absurd.current_time();
   v_payload jsonb := coalesce(p_payload, 'null'::jsonb);
+  v_emit_applied integer;
 begin
   if p_event_name is null or length(trim(p_event_name)) = 0 then
     raise exception 'event_name must be provided';
   end if;
 
+  -- Events are immutable once emitted: first write wins.
+  --
+  -- await_event() may pre-create a row with payload=NULL as a "not emitted"
+  -- sentinel. We allow exactly one transition NULL -> JSON payload.
   execute format(
-    'insert into absurd.%I (event_name, payload, emitted_at)
+    'insert into absurd.%1$I as e (event_name, payload, emitted_at)
      values ($1, $2, $3)
      on conflict (event_name)
      do update set payload = excluded.payload,
-                   emitted_at = excluded.emitted_at',
+                   emitted_at = excluded.emitted_at
+      where e.payload is null',
     'e_' || p_queue_name
   ) using p_event_name, v_payload, v_now;
+
+  get diagnostics v_emit_applied = row_count;
+
+  -- Event was already emitted earlier; do not overwrite cached payload or
+  -- re-run wakeup side effects.
+  if v_emit_applied = 0 then
+    return;
+  end if;
 
   execute format(
     'with expired_waits as (
@@ -1138,6 +1474,18 @@ declare
   v_now timestamptz := absurd.current_time();
   v_task_state text;
 begin
+  -- Lock active runs before the task row so cancel_task() uses the same
+  -- lock acquisition order as complete_run()/fail_run().
+  execute format(
+    'select run_id
+       from absurd.%I
+      where task_id = $1
+        and state not in (''completed'', ''failed'', ''cancelled'')
+      order by run_id
+      for update',
+    'r_' || p_queue_name
+  ) using p_task_id;
+
   execute format(
     'select state
        from absurd.%I
