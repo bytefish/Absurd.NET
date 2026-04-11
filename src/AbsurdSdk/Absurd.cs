@@ -34,7 +34,7 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
     /// <summary>
     /// Registers a task handler with the Absurd client. This allows the client to execute tasks of the specified type when they are claimed.
     /// </summary>
-    public void RegisterTaskAsync(TaskRegistrationOptions options, TaskHandler handler)
+    public void RegisterTask(TaskRegistrationOptions options, TaskHandler handler)
     {
         if (string.IsNullOrEmpty(options.Name))
         {

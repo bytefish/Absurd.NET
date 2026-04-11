@@ -15,7 +15,7 @@ namespace AbsurdSdk
         /// Registers a task handler with the Absurd system. The handler will be invoked when a task with 
         /// the corresponding name is spawned.
         /// </summary>
-        void RegisterTaskAsync(TaskRegistrationOptions options, TaskHandler handler);
+        void RegisterTask(TaskRegistrationOptions options, TaskHandler handler);
 
         /// <summary>
         /// Creates a new message queue with the specified name if it does not already exist.

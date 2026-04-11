@@ -23,7 +23,7 @@ public static class AbsurdExtensions
             configure(options);
         }
 
-        client.RegisterTaskAsync(options, async (ctx, jsonParams) =>
+        client.RegisterTask(options, async (ctx, jsonParams) =>
         {
             using IServiceScope scope = provider.CreateScope();
 

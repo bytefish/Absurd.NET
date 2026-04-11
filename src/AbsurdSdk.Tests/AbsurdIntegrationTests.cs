@@ -42,7 +42,7 @@ public class AbsurdIntegrationTests
         var completionSource = new TaskCompletionSource<int>();
 
         // Define the Task Logic
-        client.RegisterTaskAsync(new TaskRegistrationOptions
+        client.RegisterTask(new TaskRegistrationOptions
         {
             Queue = "test-queue",
             Name = "add-numbers"

@@ -15,7 +15,7 @@ dotnet add package AbsurdSdk
 Alternatively, you can use the NuGet Package Manager in Visual Studio:
 
 ```
-Install-PackageAbsurdSdk
+Install-Package AbsurdSdk
 ```
 
 ## 2. Quick Start ##
