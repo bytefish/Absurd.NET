@@ -4,7 +4,5 @@ namespace AbsurdSdk.Core;
 
 public interface IJob<TParams, TResult>
 {
-    static abstract TaskRegistrationOptions Options { get; }
-
     Task<TResult> ExecuteAsync(TaskContext ctx, TParams args);
 }

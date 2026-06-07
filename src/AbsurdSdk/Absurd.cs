@@ -44,7 +44,6 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
         _registry[options.Name] = new RegisteredTask
         {
             Name = options.Name,
-            Queue = options.Queue,
             DefaultMaxAttempts = options.DefaultMaxAttempts,
             DefaultCancellation = options.DefaultCancellation,
             Handler = handler
@@ -90,40 +89,26 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
     /// 
     /// The method returns a SpawnResult containing the task ID and run ID for tracking the task's progress.
     /// </summary>
-    public async Task<SpawnResult> SpawnAsync(SpawnOptions options, string taskName, object parameters)
+    public async Task<SpawnResult> SpawnAsync<TRequest>(SpawnOptions options, string jobName, TRequest request)
     {
         RegisteredTask? registration = null;
-
-        _registry.TryGetValue(taskName, out registration);
+        _registry.TryGetValue(jobName, out registration);
 
         CancellationPolicy? cancellation = options.Cancellation ?? registration?.DefaultCancellation;
-
         Dictionary<string, object> normOptions = new Dictionary<string, object>();
 
-        if (options.Headers != null)
-        {
-            normOptions["headers"] = options.Headers;
-        }
-        
+        if (options.Headers != null) normOptions["headers"] = options.Headers;
         normOptions["max_attempts"] = options.MaxAttempts;
-        
-        if (options.RetryStrategy != null)
-        {
-            normOptions["retry_strategy"] = options.RetryStrategy;
-        }
-        
-        if (cancellation != null)
-        {
-            normOptions["cancellation"] = cancellation;
-        }
+        if (options.RetryStrategy != null) normOptions["retry_strategy"] = options.RetryStrategy;
+        if (cancellation != null) normOptions["cancellation"] = cancellation;
 
         await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
         return await _db.SpawnTaskAsync(
             conn,
-            options.Queue,
-            taskName,
-            JsonSerializer.Serialize(parameters),
+            options.Queue, // Die Queue kommt jetzt immer explizit aus den SpawnOptions (vom Publisher befüllt)
+            jobName,       // Hier den jobName übergeben
+            JsonSerializer.Serialize(request), // Den generischen Request serialisieren
             JsonSerializer.Serialize(normOptions)
         ).ConfigureAwait(false);
     }

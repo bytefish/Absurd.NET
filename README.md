@@ -25,19 +25,11 @@ We start by defining a `IJob`, which is going to model an Order Fulfillment Task
 ```csharp
 public class FulfillOrderJob : IJob<OrderData, FulfillOrderResult>
 {
-    private readonly PaymentService _paymentService;
-    private readonly ShippingService _shippingService;
     private readonly ILogger<FulfillOrderJob> _logger;
 
-    // Define the registration options here
-    public static TaskRegistrationOptions Options => new()
-    {
-        Name = "fulfill-order",
-        Queue = "orders-queue",
-        DefaultMaxAttempts = 3
-    };
-
-    // Constructor Injection works perfectly here!
+    private readonly PaymentService _paymentService;
+    private readonly ShippingService _shippingService;
+    
     public FulfillOrderJob(
         PaymentService paymentService,
         ShippingService shippingService,
@@ -85,90 +77,84 @@ public class FulfillOrderJob : IJob<OrderData, FulfillOrderResult>
 We then register it in the `Program.cs` like this:
 
 ```csharp
+// Your custom connection string
+string connectionString = $"Host=127.0.0.1;Port=5432;Database=abdurd_db;Username=postgres;Password=password;";
+
+// Add Logging
+builder.Services.AddLogging();
 
 // Register Services
 builder.Services.AddSingleton<PaymentService>();
 builder.Services.AddSingleton<ShippingService>();
+builder.Services.AddSingleton<OrderService>();
 
-// Build the Absurd Client
-builder.Services.AddSingleton<IAbsurd>(sp =>
-{
-    var logger = sp.GetRequiredService<ILogger<Absurd>>();
-
-    NpgsqlDataSource dataSource = NpgsqlDataSource.Create(DockerContainers.PostgresContainer.GetConnectionString());
-
-    return new Absurd(logger, dataSource);
-});
-
-// Register Jobs
-builder.Services.RegisterJob<FulfillOrderJob, OrderData, FulfillOrderResult>();
+// Register the Absurd SDK
+builder.Services.AddAbsurdSdk(connectionString);
 ```
 
-We can then create a Background Worker to poll for Tasks to run:
+We can then create a Background Workers for polling and executing tasks:
 
 ```csharp
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
-public class SampleOrderWorker : BackgroundService
+// Configure Workers and Jobs. In this example, we have two different queues
+// for standard and VIP orders, each with its own processing configuration.
+builder.Services.AddAbsurdWorker("standard-orders-queue", worker =>
 {
-    private readonly IAbsurd _client;
-    private readonly IServiceProvider _provider;
+    worker
+        .SetConcurrency(1)
+        .SetPollInterval(1);
 
-    public SampleOrderWorker(IAbsurd client, IServiceProvider provider)
+    worker.AddJob<FulfillOrderJob, OrderData, FulfillOrderResult>("standard-fulfill", options =>
     {
-        _client = client;
-        _provider = provider;
-    }
+        options.WithMaxAttempts(3);
+    });
+});
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+builder.Services.AddAbsurdWorker("vip-orders-queue", worker =>
+{
+    worker
+        .SetConcurrency(5)
+        .SetPollInterval(0.5);
+
+    worker.AddJob<FulfillOrderJob, OrderData, FulfillOrderResult>("vip-fulfill", options =>
     {
-        // Register Jobs
-        _client.UseJob<FulfillOrderJob, OrderData, FulfillOrderResult>(_provider);
-
-        // Setup the worker to poll the queue
-        AbsurdWorker absurdWorker = new AbsurdWorker(new WorkerOptions
-        {
-            Queue = "orders-queue",
-            WorkerId = "web-worker-01",
-            Concurrency = 4,
-            PollInterval = 0.5,
-            OnError = ex => Console.WriteLine($"[WORKER ERROR] {ex.Message}")
-        }, _client);
-
-        // Start the worker loop
-        await absurdWorker.ExecuteAsync(stoppingToken);
-    }
-}
+        options.WithMaxAttempts(5);
+    });
+});
 ```
 
 And finally we define two endpoints to create an order and emit events to it:
 
 ```csharp
-app.MapPost("/order", async (IAbsurd client, [FromBody] OrderData request) =>
+// A User places an order through this endpoint. Depending on whether it's a VIP order or not, it gets published
+// to a different queue with different processing configurations.
+app.MapPost("/order", async (IJobPublisher publisher, [FromBody] OrderData request) =>
 {
-    // Start the workflow with explicit options
-    var result = await client.SpawnAsync(new SpawnOptions
-    {
-        Queue = "orders-queue",
-        MaxAttempts = 3
-    }, "fulfill-order", request);
+    // VIP Orders go to the VIP Queue with a different Job configuration (e.g. more retries, faster processing, etc.)
+    string queueName = request.IsPremium ? "vip-orders-queue" : "standard-orders-queue";
 
-    return Results.Ok(new { Message = "Order started", RunId = result.RunId });
+    SpawnResult result = await publisher.PublishAsync<FulfillOrderJob, OrderData>("vip-fulfill", request);
+
+    return Results.Ok(new { RunId = result.RunId });
 });
 
-app.MapPost("/order/{orderId}/picked", async (IAbsurd client, string orderId, [FromBody] PickingData data) =>
+app.MapPost("/order/{orderId}/picked", async (OrderService orderService, IEventPublisher publisher, string orderId, [FromBody] PickingData data) =>
 {
+    // We fetch the OrderData to determine which queue to publish the event to. In a real application, you might have this
+    // information cached or included in the request to avoid an extra database call.
+    OrderData orderData = await orderService.GetOrderByIdAsync(orderId);
+
+    // Premium Customers Events go to the VIP Queue with a different Job configuration (e.g. more retries, faster processing, etc.)
+    string queueName = orderData.IsPremium ? "vip-orders-queue" : "standard-orders-queue";
+
     // This wakes up the suspended task waiting for "order-picked:{orderId}"
-    await client.EmitEventAsync(
+    await publisher.EmitEventAsync(
+        queue: queueName,
         eventName: $"order-picked:{orderId}",
-        payload: data,
-        options: new EmitEventOptions { Queue = "orders-queue" }
+        payload: data
     );
 
     return Results.Ok(new { Message = "Pick signal sent. Workflow will resume." });
 });
-
-app.Run();
 ```
 
 To kick off an Order send the JSON Payload to the endpoints:
@@ -180,14 +166,16 @@ Content-Type: application/json
 Accept-Language: en-US,en;q=0.5
 {
   "orderId": "ORD-123",
+  "isPremium": true,
   "amount": 99.50,
   "items": ["Item A", "Item B"]
 }
 
 ### Continues running Order "ORD-123"
-POST https://localhost:5000/order/ORD-123/picked
+ POST https://localhost:5000/order/ORD-123/picked
+Content-Type: application/json
 { 
-  "picker": "Philipp" 
+  "picker": "Philipp",
+  "pickedAt": "2024-06-01T10:15:30Z"
 }
 ```
-

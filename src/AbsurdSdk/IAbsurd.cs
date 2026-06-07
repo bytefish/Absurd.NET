@@ -39,7 +39,7 @@ namespace AbsurdSdk
         /// Spawns a new task with the specified name and parameters, and enqueues it onto the specified message queue. The task will be picked up by 
         /// a registered handler for execution.
         /// </summary>
-        Task<SpawnResult> SpawnAsync(SpawnOptions options, string taskName, object parameters);
+        Task<SpawnResult> SpawnAsync<TRequest>(SpawnOptions options, string jobName, TRequest request);
 
         /// <summary>
         /// Emits a custom event with the specified name and payload to the specified message queue. This can be used for inter-task communication, 
@@ -75,4 +75,48 @@ namespace AbsurdSdk
         /// </summary>
         Task ExecuteTaskAsync(ClaimedTask task, string queue, int claimTimeout, bool fatalOnLeaseTimeout = false);
     }
+}
+
+
+/// <summary>
+/// ROLLE 1: DER PUBLISHER / CLIENT
+/// Dieses Interface wird an den Endnutzer (z.B. in Controllern oder Minimal APIs) herausgegeben.
+/// Es enthält NUR Methoden, um mit dem System zu interagieren, aber keine gefährlichen 
+/// Management- oder Worker-Funktionen.
+/// </summary>
+public interface IAbsurdClient
+{
+    Task<SpawnResult> SpawnAsync(SpawnOptions options, string taskName, object parameters);
+
+    Task EmitEventAsync(EmitEventOptions options, string eventName, object? payload = null);
+
+    Task CancelTaskAsync(CancelTaskOptions options, string taskId);
+}
+
+/// <summary>
+/// ROLLE 2: MANAGEMENT / ADMIN
+/// Dieses Interface wird für das Setup der Infrastruktur genutzt (z.B. in Program.cs beim Start 
+/// oder in administrativen Dashboards). Es ist klar vom normalen Client getrennt.
+/// </summary>
+public interface IAbsurdManagementClient
+{
+    Task CreateQueueAsync(string queueName);
+
+    Task DropQueueAsync(string queueName);
+
+    Task<IEnumerable<string>> ListQueuesAsync();
+}
+
+/// <summary>
+/// ROLLE 3: DER WORKER / SYSTEM-INTERN
+/// Dieses Interface wird AUSSCHLIESSLICH von deinem `AbsurdWorker` / BackgroundService genutzt.
+/// Der normale Nutzer deiner Bibliothek sollte diese Methoden niemals zu Gesicht bekommen.
+/// (Man könnte es in der echten Implementierung sogar `internal` machen).
+/// </summary>
+public interface IAbsurdWorkerClient
+{
+    void RegisterTask(TaskRegistrationOptions options, TaskHandler handler);
+    Task<IEnumerable<ClaimedTask>> ClaimTasksAsync(string queue, string workerId, int claimTimeout = 120, int batchSize = 1);
+    Task WorkBatchAsync(string queue, string workerId, int claimTimeout = 120, int batchSize = 1);
+    Task ExecuteTaskAsync(ClaimedTask task, string queue, int claimTimeout, bool fatalOnLeaseTimeout = false);
 }

@@ -44,7 +44,6 @@ public class AbsurdIntegrationTests
         // Define the Task Logic
         client.RegisterTask(new TaskRegistrationOptions
         {
-            Queue = "test-queue",
             Name = "add-numbers"
         }, async (ctx, parameters) =>
         {

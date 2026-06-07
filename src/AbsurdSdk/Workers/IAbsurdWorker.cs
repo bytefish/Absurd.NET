@@ -2,6 +2,9 @@
 
 namespace AbsurdSdk.Workers;
 
+/// <summary>
+/// Defines a contract for a worker that can be closed asynchronously, releasing any resources it is using.
+/// </summary>
 public interface IAbsurdWorker
 {
     /// <summary>

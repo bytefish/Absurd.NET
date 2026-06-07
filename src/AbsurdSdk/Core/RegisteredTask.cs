@@ -1,8 +1,5 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
 namespace AbsurdSdk.Core;
 
 /// <summary>
@@ -16,12 +13,6 @@ internal class RegisteredTask
     /// unique across all registered tasks.
     /// </summary>
     public required string Name { get; set; }
-
-    /// <summary>
-    /// Queue that this task belongs to. Tasks are claimed and executed on a per-queue basis, so this determines which 
-    /// worker(s) will execute tasks of this type.
-    /// </summary>
-    public required string Queue { get; set; }
 
     /// <summary>
     /// Maximum Number of attempts for this task before it is considered failed. This is used 

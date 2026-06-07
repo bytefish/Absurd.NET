@@ -16,12 +16,6 @@ public class TaskRegistrationOptions
     public required string Name { get; set; }
 
     /// <summary>
-    /// Queue the task belongs to. This determines which workers will be able to claim and execute tasks of this 
-    /// type. It must match the queue specified in the SpawnOptions when spawning tasks of this type.
-    /// </summary>
-    public required string Queue { get; set; }
-
-    /// <summary>
     /// Default Number of attempts for this task before it is considered failed.
     /// </summary>
     public int DefaultMaxAttempts { get; set; } = 5;
