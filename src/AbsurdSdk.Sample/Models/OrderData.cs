@@ -8,6 +8,8 @@ public class OrderData
 
     public string CustomerEmail { get; set; } = string.Empty;
 
+    public bool IsPremium { get; set; } = false;
+
     public decimal Amount { get; set; }
 
     public List<string> Items { get; set; } = new();

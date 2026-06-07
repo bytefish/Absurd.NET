@@ -15,8 +15,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
     volumes:
-      - "./postgres/postgres.conf:/usr/local/etc/postgres/postgres.conf"
-      - ../sql/absurd.sql:/docker-entrypoint-initdb.d/1-absurd.sql
+      - ./sql/absurd.sql:/docker-entrypoint-initdb.d/1-absurd.sql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s

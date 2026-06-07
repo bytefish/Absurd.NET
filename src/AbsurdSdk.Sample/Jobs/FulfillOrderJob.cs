@@ -9,19 +9,11 @@ namespace AbsurdSdk.Sample.Jobs;
 
 public class FulfillOrderJob : IJob<OrderData, FulfillOrderResult>
 {
-    private readonly PaymentService _paymentService;
-    private readonly ShippingService _shippingService;
     private readonly ILogger<FulfillOrderJob> _logger;
 
-    // Define the registration options here
-    public static TaskRegistrationOptions Options => new()
-    {
-        Name = "fulfill-order",
-        Queue = "orders-queue",
-        DefaultMaxAttempts = 3
-    };
-
-    // Constructor Injection works perfectly here!
+    private readonly PaymentService _paymentService;
+    private readonly ShippingService _shippingService;
+    
     public FulfillOrderJob(
         PaymentService paymentService,
         ShippingService shippingService,
