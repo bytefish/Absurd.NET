@@ -8,7 +8,7 @@ namespace AbsurdSdk.Core;
 /// <remarks>This class is intended for internal use to integrate with the Absurd event system. It delegates event
 /// publishing to an underlying IAbsurd client. Thread safety and error handling depend on the behavior of the provided
 /// IAbsurd implementation.</remarks>
-internal class AbsurdEventPublisher : IEventPublisher
+public class AbsurdEventPublisher : IEventPublisher
 {
     private readonly IAbsurd _client;
 
@@ -28,9 +28,10 @@ internal class AbsurdEventPublisher : IEventPublisher
     /// <param name="queue">The name of the queue to which the event will be emitted. Cannot be null or empty.</param>
     /// <param name="eventName">The name of the event to emit. Cannot be null or empty.</param>
     /// <param name="payload">The payload data to include with the event.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task that represents the asynchronous emit operation.</returns>
-    public async Task EmitEventAsync<TPayload>(string queue, string eventName, TPayload payload)
+    public async Task EmitEventAsync<TPayload>(string queue, string eventName, TPayload payload, CancellationToken cancellationToken)
     {
-        await _client.SpawnAsync(new SpawnOptions { Queue = queue }, eventName, payload);
+        await _client.EmitEventAsync(new EmitEventOptions { Queue = queue }, eventName, payload, cancellationToken);
     }
 }

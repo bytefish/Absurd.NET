@@ -19,7 +19,7 @@ internal class AbsurdJobPublisher : IJobPublisher
         _registry = registry;
     }
 
-    public Task<SpawnResult> PublishAsync<TJob, TRequest>(string jobName, TRequest request)
+    public Task<SpawnResult> PublishAsync<TJob, TRequest>(string jobName, TRequest request, CancellationToken cancellationToken)
         where TRequest : notnull
     {
         if (!_registry.Routes.TryGetValue(jobName, out (Type JobType, string Queue) routing))
@@ -32,6 +32,6 @@ internal class AbsurdJobPublisher : IJobPublisher
             throw new InvalidOperationException($"Type-Mismatch for Job '{jobName}'.");
         }
 
-        return _client.SpawnAsync(new SpawnOptions { Queue = routing.Queue }, jobName, request);
+        return _client.SpawnAsync(new SpawnOptions { Queue = routing.Queue }, jobName, request, cancellationToken);
     }
 }

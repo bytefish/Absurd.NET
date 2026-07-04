@@ -4,6 +4,7 @@
     <File Path="../LICENSE" />
     <File Path="../README.md" />
   </Folder>
+  <Project Path="AbsurdSdk.AiSample/AbsurdSdk.AiSample.csproj" />
   <Project Path="AbsurdSdk.Sample/AbsurdSdk.Sample.csproj" />
   <Project Path="AbsurdSdk.Tests/AbsurdSdk.Tests.csproj" />
   <Project Path="AbsurdSdk/AbsurdSdk.csproj" />

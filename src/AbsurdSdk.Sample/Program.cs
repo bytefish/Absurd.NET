@@ -1,6 +1,5 @@
 ﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using AbsurdSdk;
 using AbsurdSdk.Core;
 using AbsurdSdk.Extensions;
 using AbsurdSdk.Sample.Docker;
@@ -8,14 +7,12 @@ using AbsurdSdk.Sample.Jobs;
 using AbsurdSdk.Sample.Models;
 using AbsurdSdk.Sample.Services;
 using Microsoft.AspNetCore.Mvc;
-using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Start Docker Containers for dependencies
 await DockerContainers.StartAllContainersAsync();
 
-// Your custom connection string
 string connectionString = $"Host=127.0.0.1;Port=5432;Database=abdurd_db;Username=postgres;Password=password;";
 
 // Add Logging
@@ -59,17 +56,17 @@ var app = builder.Build();
 
 // A User places an order through this endpoint. Depending on whether it's a VIP order or not, it gets published
 // to a different queue with different processing configurations.
-app.MapPost("/order", async (IJobPublisher publisher, [FromBody] OrderData request) =>
+app.MapPost("/order", async (IJobPublisher publisher, [FromBody] OrderData request, CancellationToken ct) =>
 {
     // VIP Orders go to the VIP Queue with a different Job configuration (e.g. more retries, faster processing, etc.)
     string queueName = request.IsPremium ? "vip-orders-queue" : "standard-orders-queue";
 
-    SpawnResult result = await publisher.PublishAsync<FulfillOrderJob, OrderData>("vip-fulfill", request);
+    SpawnResult result = await publisher.PublishAsync<FulfillOrderJob, OrderData>("vip-fulfill", request, ct);
 
     return Results.Ok(new { RunId = result.RunId });
 });
 
-app.MapPost("/order/{orderId}/picked", async (OrderService orderService, IEventPublisher publisher, string orderId, [FromBody] PickingData data) =>
+app.MapPost("/order/{orderId}/picked", async (OrderService orderService, IEventPublisher publisher, string orderId, [FromBody] PickingData data, CancellationToken ct) =>
 {
     // We fetch the OrderData to determine which queue to publish the event to. In a real application, you might have this
     // information cached or included in the request to avoid an extra database call.
@@ -82,7 +79,8 @@ app.MapPost("/order/{orderId}/picked", async (OrderService orderService, IEventP
     await publisher.EmitEventAsync(
         queue: queueName,
         eventName: $"order-picked:{orderId}",
-        payload: data
+        payload: data,
+        ct
     );
 
     return Results.Ok(new { Message = "Pick signal sent. Workflow will resume." });

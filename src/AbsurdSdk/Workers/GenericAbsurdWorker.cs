@@ -35,7 +35,7 @@ internal class AbsurdGenericWorker : BackgroundService
     {
         _logger.LogInformation("Create Queue if not exists: '{Queue}'", _queueName);
         
-        await _client.CreateQueueAsync(_queueName);
+        await _client.CreateQueueAsync(_queueName, stoppingToken);
 
         var config = _registry.WorkerConfigs.First(w => w.QueueName == _queueName);
 

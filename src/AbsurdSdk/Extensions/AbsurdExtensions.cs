@@ -24,7 +24,7 @@ public static class AbsurdExtensions
             DefaultCancellation = defaultCancellation
         };
 
-        client.RegisterTask(options, async (ctx, jsonParams) =>
+        client.RegisterTask(options, async (ctx, jsonParams, ct) =>
         {
             using IServiceScope scope = provider.CreateScope();
             TJob job = scope.ServiceProvider.GetRequiredService<TJob>();
@@ -39,6 +39,7 @@ public static class AbsurdExtensions
             }
 
             var result = await job.ExecuteAsync(ctx, typedParams!);
+
             return (object)result!;
         });
     }

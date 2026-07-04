@@ -54,32 +54,32 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
     /// Creates a new queue with the specified name. Queues are used to organize tasks and determine which workers can claim 
     /// and execute them. This method must be called before spawning tasks to a new queue or claiming tasks from it.
     /// </summary>
-    public async Task CreateQueueAsync(string queueName)
+    public async Task CreateQueueAsync(string queueName, CancellationToken cancellationToken)
     {
         await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        await _db.CreateQueueAsync(conn, queueName).ConfigureAwait(false);
+        await _db.CreateQueueAsync(conn, queueName, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Drops the specified queue and all associated tasks and events. This is a destructive operation that cannot be 
     /// undone, so use with caution.
     /// </summary>
-    public async Task DropQueueAsync(string queueName)
+    public async Task DropQueueAsync(string queueName, CancellationToken cancellationToken)
     {
         await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        await _db.DropQueueAsync(conn, queueName).ConfigureAwait(false);
+        await _db.DropQueueAsync(conn, queueName, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Returns a list of all existing queues in the Absurd system. This can be used to discover available queues 
     /// for spawning tasks or claiming work.
     /// </summary>
-    public async Task<IEnumerable<string>> ListQueuesAsync()
+    public async Task<IEnumerable<string>> ListQueuesAsync(CancellationToken cancellationToken)
     {
-        await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
-        return await _db.ListQueuesAsync(conn).ConfigureAwait(false);
+        await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        return await _db.ListQueuesAsync(conn, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -89,7 +89,7 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
     /// 
     /// The method returns a SpawnResult containing the task ID and run ID for tracking the task's progress.
     /// </summary>
-    public async Task<SpawnResult> SpawnAsync<TRequest>(SpawnOptions options, string jobName, TRequest request)
+    public async Task<SpawnResult> SpawnAsync<TRequest>(SpawnOptions options, string jobName, TRequest request, CancellationToken cancellationToken)
     {
         RegisteredTask? registration = null;
         _registry.TryGetValue(jobName, out registration);
@@ -102,14 +102,15 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
         if (options.RetryStrategy != null) normOptions["retry_strategy"] = options.RetryStrategy;
         if (cancellation != null) normOptions["cancellation"] = cancellation;
 
-        await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
+        await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
         return await _db.SpawnTaskAsync(
             conn,
             options.Queue, // Die Queue kommt jetzt immer explizit aus den SpawnOptions (vom Publisher befüllt)
             jobName,       // Hier den jobName übergeben
             JsonSerializer.Serialize(request), // Den generischen Request serialisieren
-            JsonSerializer.Serialize(normOptions)
+            JsonSerializer.Serialize(normOptions),
+            cancellationToken
         ).ConfigureAwait(false);
     }
 
@@ -118,7 +119,7 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
     /// response to certain conditions, such as task completions, failures, or custom application events. Workers 
     /// can listen for specific events and execute handlers when those events are emitted. 
     /// </summary>
-    public async Task EmitEventAsync(EmitEventOptions options, string eventName, object? payload)
+    public async Task EmitEventAsync(EmitEventOptions options, string eventName, object? payload, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(eventName))
         {
@@ -127,7 +128,7 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
 
         await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
         
-        await _db.EmitEventAsync(conn, options.Queue, eventName, JsonSerializer.Serialize(payload)).ConfigureAwait(false);
+        await _db.EmitEventAsync(conn, options.Queue, eventName, JsonSerializer.Serialize(payload), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -135,18 +136,18 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
     /// already been claimed by a worker. If the task is currently being executed, the cancellation policy will determine 
     /// how the worker should respond (e.g. whether to allow the task to finish, attempt to stop it, or mark it as cancelled).
     /// </summary>
-    public async Task CancelTaskAsync(CancelTaskOptions options, string taskId)
+    public async Task CancelTaskAsync(CancelTaskOptions options, string taskId, CancellationToken cancellationToken)
     {
         await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        await _db.CancelTaskAsync(conn, options.Queue, taskId).ConfigureAwait(false);
+        await _db.CancelTaskAsync(conn, options.Queue, taskId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Claims a Task from the specified queue for execution. This method is typically called by worker processes that are 
     /// polling for work.
     /// </summary>
-    public async Task<IEnumerable<ClaimedTask>> ClaimTasksAsync(string queue, string workerId = "worker", int claimTimeout = 120, int batchSize = 1)
+    public async Task<IEnumerable<ClaimedTask>> ClaimTasksAsync(string queue, string workerId, CancellationToken cancellationToken, int claimTimeout = 120, int batchSize = 1)
     {
         if (string.IsNullOrEmpty(queue))
         {
@@ -155,20 +156,20 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
 
         await using NpgsqlConnection conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        return await _db.ClaimTasksAsync(conn, queue, workerId, claimTimeout, batchSize).ConfigureAwait(false);
+        return await _db.ClaimTasksAsync(conn, queue, workerId, claimTimeout, batchSize, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Processes a batch of claimed tasks from the specified queue. This method is typically called by worker processes that are 
     /// polling for work. It claims a batch of tasks and then executes each one using the registered handlers.
     /// </summary>
-    public async Task WorkBatchAsync(string queue, string workerId = "worker", int claimTimeout = 120, int batchSize = 1)
+    public async Task WorkBatchAsync(string queue, string workerId, CancellationToken cancellationToken, int claimTimeout = 120, int batchSize = 1)
     {
-        IEnumerable<ClaimedTask> tasks = await ClaimTasksAsync(queue, workerId, claimTimeout, batchSize).ConfigureAwait(false);
+        IEnumerable<ClaimedTask> tasks = await ClaimTasksAsync(queue, workerId, cancellationToken, claimTimeout, batchSize).ConfigureAwait(false);
 
         foreach (ClaimedTask task in tasks)
         {
-            await ExecuteTaskAsync(task, queue, claimTimeout).ConfigureAwait(false);
+            await ExecuteTaskAsync(task, queue, claimTimeout, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -177,12 +178,14 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
     /// a task execution, including invoking the handler, managing timeouts, handling exceptions, and marking the task 
     /// as completed or failed in the database.
     /// </summary>
-    public async Task ExecuteTaskAsync(ClaimedTask task, string queue, int claimTimeout, bool fatalOnLeaseTimeout = false)
+    public async Task ExecuteTaskAsync(ClaimedTask task, string queue, int claimTimeout, CancellationToken stoppingToken, bool fatalOnLeaseTimeout = false)
     {
-        using CancellationTokenSource cts = new CancellationTokenSource();
+        using CancellationTokenSource timeoutCts = new CancellationTokenSource();
+
+        using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, timeoutCts.Token);
 
         _ = Task
-            .Delay(claimTimeout * 1000, cts.Token)
+            .Delay(claimTimeout * 1000, timeoutCts.Token)
             .ContinueWith(t => 
             {
                 if (!t.IsCanceled)
@@ -197,21 +200,21 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
         {
             RegisteredTask? registration = _registry.ContainsKey(task.TaskName) ? _registry[task.TaskName] : null;
 
-            TaskContext ctx = await TaskContext.CreateAsync(_logger, task.TaskId, conn, queue, task, claimTimeout).ConfigureAwait(false);
+            TaskContext ctx = await TaskContext.CreateAsync(_logger, task.TaskId, conn, queue, task, claimTimeout, linkedCts.Token).ConfigureAwait(false);
 
             if (registration == null)
             {
                 throw new Exception($"Unknown task: {task.TaskName}");
             }
 
-            Task<object> handlerTask = registration.Handler(ctx, task.Params);
+            Task<object> handlerTask = registration.Handler(ctx, task.Params, linkedCts.Token);
 
-            Task fatalTask = Task.Delay(Timeout.Infinite, cts.Token);
+            Task fatalTask = Task.Delay(Timeout.Infinite, timeoutCts.Token);
 
             if (fatalOnLeaseTimeout)
             {
                 fatalTask = Task
-                    .Delay(claimTimeout * 1000 * 2, cts.Token)
+                    .Delay(claimTimeout * 1000 * 2, timeoutCts.Token)
                     .ContinueWith(t =>
                     {
                         if (!t.IsCanceled)
@@ -230,7 +233,7 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
 
             object result = await handlerTask.ConfigureAwait(false);
 
-            await _db.CompleteRunAsync(conn, queue, task.RunId, JsonSerializer.Serialize(result)).ConfigureAwait(false);
+            await _db.CompleteRunAsync(conn, queue, task.RunId, JsonSerializer.Serialize(result), linkedCts.Token).ConfigureAwait(false);
         }
         catch (Exception err)
         {
@@ -242,7 +245,7 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
             {
                 var errorObj = new { name = err.GetType().Name, message = err.Message, stack = err.StackTrace };
 
-                await _db.FailRunAsync(conn, queue, task.RunId, JsonSerializer.Serialize(errorObj)).ConfigureAwait(false);
+                await _db.FailRunAsync(conn, queue, task.RunId, JsonSerializer.Serialize(errorObj), linkedCts.Token).ConfigureAwait(false);
             }
             catch (Exception failErr)
             {
@@ -253,7 +256,7 @@ public class Absurd : IAbsurd, IDisposable, IAsyncDisposable
         }
         finally
         {
-            cts.Cancel();
+            timeoutCts.Cancel();
         }
     }
 

@@ -1,0 +1,22 @@
+### Start the Agent Job for an AI fix for the Issue.
+POST https://localhost:5000/agent/start
+Content-Type: application/json
+{
+    "issue_id": "12345"
+}
+
+### We cannot approve such a complex fix, reject and tell it to make it simpler.
+POST https://localhost:5000/agent/review/12345/attempt-1
+Content-Type: application/json
+{
+    "approved": false,
+    "reason": "This is way too complex, make it a simple fix."
+}
+
+### Send Human Feedback to the Agent
+POST https://localhost:5000/agent/review/12345/attempt-2
+Content-Type: application/json
+{
+    "approved": true,
+    "reason": "Now, this looks good!"
+}

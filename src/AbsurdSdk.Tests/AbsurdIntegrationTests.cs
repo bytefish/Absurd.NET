@@ -35,17 +35,18 @@ public class AbsurdIntegrationTests
         // Build the Absurd Client
         IAbsurd client = new Absurd(NullLogger<Absurd>.Instance, dataSource);
 
-        // Ensure the test queue exists
-        await client.CreateQueueAsync("test-queue");
 
         // We use a TCS to signal when the background worker has actually finished the task
         var completionSource = new TaskCompletionSource<int>();
+        
+        // Ensure the test queue exists
+        await client.CreateQueueAsync("test-queue", default);
 
         // Define the Task Logic
         client.RegisterTask(new TaskRegistrationOptions
         {
             Name = "add-numbers"
-        }, async (ctx, parameters) =>
+        }, async (ctx, parameters, ct) =>
         {
             if(parameters ==  null)
             {
@@ -64,7 +65,7 @@ public class AbsurdIntegrationTests
         });
 
         // ACT
-        await client.SpawnAsync(new SpawnOptions { Queue = "test-queue" }, "add-numbers", new { a = 10, b = 20 });
+        await client.SpawnAsync(new SpawnOptions { Queue = "test-queue" }, "add-numbers", new { a = 10, b = 20 }, default);
 
         AbsurdWorker worker = new AbsurdWorker(new WorkerOptions
         {

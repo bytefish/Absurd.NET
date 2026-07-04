@@ -45,7 +45,7 @@ namespace AbsurdSdk.Workers
                         continue;
                     }
 
-                    var messages = await _client.ClaimTasksAsync(_options.Queue, _options.WorkerId, _options.ClaimTimeout, toClaim).ConfigureAwait(false);
+                    var messages = await _client.ClaimTasksAsync(_options.Queue, _options.WorkerId, stoppingToken, _options.ClaimTimeout, toClaim).ConfigureAwait(false);
 
                     var msgList = new List<ClaimedTask>(messages);
 
@@ -60,7 +60,7 @@ namespace AbsurdSdk.Workers
                         await semaphore.WaitAsync(stoppingToken).ConfigureAwait(false);
 
                         // Fire and forget (tracked by dictionary)
-                        Task taskExecution = ExecuteTaskWrapper(task, semaphore);
+                        Task taskExecution = ExecuteTaskWrapper(task, stoppingToken, semaphore);
 
                         executing.TryAdd(taskExecution, true);
 
@@ -80,11 +80,11 @@ namespace AbsurdSdk.Workers
             await Task.WhenAll(executing.Keys).ConfigureAwait(false);
         }
 
-        private async Task ExecuteTaskWrapper(ClaimedTask task, SemaphoreSlim semaphore)
+        private async Task ExecuteTaskWrapper(ClaimedTask task, CancellationToken stoppingToken, SemaphoreSlim semaphore)
         {
             try
             {
-                await _client.ExecuteTaskAsync(task, _options.Queue, _options.ClaimTimeout, _options.FatalOnLeaseTimeout).ConfigureAwait(false);
+                await _client.ExecuteTaskAsync(task, _options.Queue, _options.ClaimTimeout, stoppingToken, _options.FatalOnLeaseTimeout).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
