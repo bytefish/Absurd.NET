@@ -26,9 +26,9 @@ builder.Services.AddSingleton<ILocalNotificationService, LocalNotificationServic
 // Register the Absurd SDK
 builder.Services.AddAbsurdSdk(connectionString);
 
-
-// Configure Workers and Jobs. In this example, we have two different queues
-// for standard and VIP orders, each with its own processing configuration.
+// Configure Workers and Jobs. In this example, we have a queue for AI agents that process tasks related to bug fixing. The
+// worker is configured to handle one task at a time and poll for new tasks every second. The job "solve-bug" is defined
+// with a maximum of 3 attempts for each task.
 builder.Services.AddAbsurdWorker("ai-agent-queue", worker =>
 {
     worker

@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+using System.Text;
 
 namespace AbsurdSdk.AiSample.Services
 {
@@ -31,7 +33,7 @@ namespace AbsurdSdk.AiSample.Services
             .AppendLine()
             .AppendLine("{")
             .AppendLine("  \"approved\": true,")
-            .AppendLine("  \"reason\": \"LGTM 👍!\"")
+            .AppendLine("  \"reason\": \"LGTM!\"")
             .AppendLine("}")
             .AppendLine("======================================================")
             .AppendLine()

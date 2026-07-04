@@ -5,12 +5,12 @@ Content-Type: application/json
     "issue_id": "12345"
 }
 
-### We cannot approve such a complex fix, reject and tell it to make it simpler.
+### We cannot approve such a simple fix, reject and tell it to improve.
 POST https://localhost:5000/agent/review/12345/attempt-1
 Content-Type: application/json
 {
     "approved": false,
-    "reason": "This is way too complex, make it a simple fix."
+    "reason": "This is way too simple, add a better error handling strategy!"
 }
 
 ### Send Human Feedback to the Agent

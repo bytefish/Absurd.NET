@@ -21,12 +21,10 @@ public class LlmService : ILlmService
         // Simulate a very expensive LLM call with a delay
         await Task.Delay(2500, ct);
 
-        var lastFeed = lastFeedback.Contains("simple");
-
         // Change Code based on human feedback
-        string code = lastFeedback.Contains("simple")
-            ? "// AI: Simple Fix for the NullReferenceException\nif(data == null) return;"
-            : "// AI: Improved Logging & Error-Handling added\nif(data == null) throw new ArgumentNullException();";
+        string code = lastFeedback.Contains("error handling")
+            ? "// AI: Improved Logging & Error-Handling added\nif(data == null) throw new ArgumentNullException();" 
+            : "// AI: Simple Fix for the NullReferenceException\nif(data == null) return;";
 
         _logger.LogInformation("LLM has generated a potential fix: {PatchedCode}", code);
 
