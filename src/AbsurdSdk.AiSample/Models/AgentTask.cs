@@ -2,11 +2,10 @@
 
 using System.Text.Json.Serialization;
 
-namespace AbsurdSdk.AiSample.Models
+namespace AbsurdSdk.AiSample.Models;
+
+public class AgentTask 
 {
-    public class AgentTask 
-    {
-        [JsonPropertyName("issue_id")]
-        public string IssueId { get; set; } = ""; 
-    }
+    [JsonPropertyName("issue_id")]
+    public string IssueId { get; set; } = ""; 
 }

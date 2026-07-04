@@ -8,9 +8,8 @@ namespace AbsurdSdk.AiSample.Docker
 {
     public class DockerContainers
     {
-        public static PostgreSqlContainer PostgresContainer = new PostgreSqlBuilder()
+        public static PostgreSqlContainer PostgresContainer = new PostgreSqlBuilder("postgres:18")
             .WithName("postgres")
-            .WithImage("postgres:18")
             .WithEnvironment("POSTGRES_CONFIG_FILE", "/usr/local/etc/postgres/postgres.conf")
             .WithEnvironment("PGDATA", "/var/lib/postgresql/data/pgdata")
             .WithEnvironment("POSTGRES_USER", "postgres")
@@ -35,8 +34,6 @@ namespace AbsurdSdk.AiSample.Docker
         public static async Task StopAllContainersAsync()
         {
             await PostgresContainer.StopAsync();
-        }
-
-        
+        }        
     }
 }

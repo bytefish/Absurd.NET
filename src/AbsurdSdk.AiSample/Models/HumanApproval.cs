@@ -2,14 +2,13 @@
 
 using System.Text.Json.Serialization;
 
-namespace AbsurdSdk.AiSample.Models
-{
-    public class HumanApproval 
-    {
-        [JsonPropertyName("approved")]
-        public bool Approved { get; set; }
+namespace AbsurdSdk.AiSample.Models;
 
-        [JsonPropertyName("reason")]
-        public string? Reason { get; set; } 
-    }
+public class HumanApproval 
+{
+    [JsonPropertyName("approved")]
+    public bool Approved { get; set; }
+
+    [JsonPropertyName("reason")]
+    public string? Reason { get; set; } 
 }

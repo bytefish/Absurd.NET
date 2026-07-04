@@ -2,11 +2,10 @@
 
 using System.Text.Json.Serialization;
 
-namespace AbsurdSdk.AiSample.Models
+namespace AbsurdSdk.AiSample.Models;
+
+public class Issue 
 {
-    public class Issue 
-    {
-        [JsonPropertyName("stack_trace")]
-        public string StackTrace { get; set; } = ""; 
-    }
+    [JsonPropertyName("stack_trace")]
+    public string StackTrace { get; set; } = ""; 
 }

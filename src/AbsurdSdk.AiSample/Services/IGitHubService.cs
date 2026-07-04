@@ -18,13 +18,18 @@ public interface IGitHubService
 public class GitHubService : IGitHubService
 {
     private readonly ILogger<GitHubService> _logger;
-    public GitHubService(ILogger<GitHubService> logger) => _logger = logger;
+
+    public GitHubService(ILogger<GitHubService> logger)
+    {
+        _logger = logger;
+    }
 
     public async Task<Issue> GetIssueDetailsAsync(string issueId, CancellationToken ct)
     {
         _logger.LogInformation("GitHub: Gets Ticket #{id} details from the Repository...", issueId);
 
         await Task.Delay(800, ct);
+
         return new Issue { StackTrace = "NullReferenceException at PaymentGateway.cs:42" };
     }
 

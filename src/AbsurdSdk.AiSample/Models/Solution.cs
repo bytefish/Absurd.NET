@@ -2,11 +2,10 @@
 
 using System.Text.Json.Serialization;
 
-namespace AbsurdSdk.AiSample.Models
+namespace AbsurdSdk.AiSample.Models;
+
+public class Solution 
 {
-    public class Solution 
-    {
-        [JsonPropertyName("patched_code")]
-        public string PatchedCode { get; set; } = ""; 
-    }
+    [JsonPropertyName("patched_code")]
+    public string PatchedCode { get; set; } = ""; 
 }
